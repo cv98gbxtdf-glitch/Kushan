@@ -5,7 +5,7 @@ local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/deivi
 -- GAME DETECTION
 -- =====================
 local SUPPORTED_GAMES = {
-    [YOUR_PLACE_ID_HERE] = "NinjaGame", -- replace with actual PlaceId from print(game.PlaceId)
+    [130960021905304] = "NinjaGame", -- replace with actual PlaceId from print(game.PlaceId)
 }
 
 local currentPlaceId = game.PlaceId
