@@ -1,0 +1,1 @@
+-- NinjaGame module (only loads if game detected)
