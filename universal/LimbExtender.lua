@@ -84,7 +84,8 @@ local ESP_SOURCE_URLS = {
 }
 
 local MANAGER_SOURCE_URLS = {
-	"https://api.rubis.app/v2/scrap/rNPKyva99IGbf6tH/raw"
+    "https://raw.githubusercontent.com/cv98gbxtdf-glitch/Kushan/refs/heads/main/universal/manager.lua",
+    "https://api.rubis.app/v2/scrap/rNPKyva99IGbf6tH/raw", -- fallback
 }
 
 local GAME_SCRIPT_URLS = {
