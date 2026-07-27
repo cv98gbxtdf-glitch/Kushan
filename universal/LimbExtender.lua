@@ -76,21 +76,11 @@ end
 local BLOCKED_PROPS = {
 	Size = true, Transparency = true, CanCollide = true, Massless = true,
 	Mass = true, AssemblyMass = true, AssemblyCenterOfMass = true,
-    RootPriority = true,
-}
-
-local ESP_SOURCE_URLS = {
-	"https://api.rubis.app/v2/scrap/qghKmrRhRUfwDnee/raw",
+	RootPriority = true,
 }
 
 local MANAGER_SOURCE_URLS = {
     "https://raw.githubusercontent.com/cv98gbxtdf-glitch/Kushan/refs/heads/main/universal/manager.lua",
-}
-
-local GAME_SCRIPT_URLS = {
-	[1054526971] = {
-		"https://raw.githubusercontent.com/AAPVdev/scripts/refs/heads/main/games/brm5.lua",
-	},
 }
 
 local function fetchWithFallback(urlList)
@@ -104,16 +94,6 @@ local function fetchWithFallback(urlList)
 		end
 	end
 	return nil
-end
-
-local function ensureESPLoaded()
-	if limbData.ESP then return limbData.ESP end
-	if not (has_loadstring and has_httpget) then return nil end
-	local source = fetchWithFallback(ESP_SOURCE_URLS)
-	if not source then return nil end
-	local ok, res = pcall(function() return loadstring(source)() end)
-	if ok then limbData.ESP = res end
-	return limbData.ESP
 end
 
 local function ensureMANAGERLoaded()
@@ -136,17 +116,6 @@ local RESTART_KEYS = {
 	ALT_RESET_LIMB_ON_DEATH = true,
 	NPC_DIRECTORIES         = true,
 }
-
-local function applyToggles(s, flags)
-	return {
-		Box      = s.ESP_BOX      and flags.Box,
-		Box3D    = s.ESP_BOX3D    and flags.Box3D,
-		Tracer   = s.ESP_TRACER   and flags.Tracer,
-		Skeleton = s.ESP_SKELETON and flags.Skeleton,
-		Health   = s.ESP_HEALTH   and flags.Health,
-		Label    = s.ESP_LABEL    and flags.Label,
-	}
-end
 
 local function buildLimbProps(limb, entry, settings)
 	local newVec = Vector3_new(settings.LIMB_SIZE, settings.LIMB_SIZE, settings.LIMB_SIZE)
@@ -179,109 +148,109 @@ function getTargetData(instance)
 end
 
 local function createCustomSignals(limb)
-    local data = getTargetData(limb)
-    if data._customSignals then return end
+	local data = getTargetData(limb)
+	if data._customSignals then return end
 
-    local custom = {}
-    local real = {}
+	local custom = {}
+	local real = {}
 
-    real.Changed = Instance.new("BindableEvent")
-    custom.Changed = real.Changed.Event
+	real.Changed = Instance.new("BindableEvent")
+	custom.Changed = real.Changed.Event
 
-    for prop, _ in pairs(BLOCKED_PROPS) do
-        real[prop] = Instance.new("BindableEvent")
-        custom[prop] = real[prop].Event
-    end
+	for prop, _ in pairs(BLOCKED_PROPS) do
+		real[prop] = Instance.new("BindableEvent")
+		custom[prop] = real[prop].Event
+	end
 
-    data._customSignals = custom
-    data._realSignals = real
+	data._customSignals = custom
+	data._realSignals = real
 
-    local function migrateSignal(realSignal, newSignal)
-        local connections = getconnections(realSignal)
-        for _, conn in ipairs(connections) do
-            local func = conn.Function
-            if func then
-                newSignal:Connect(func)
-            end
-            conn:Disable()
-        end
-    end
+	local function migrateSignal(realSignal, newSignal)
+		local connections = getconnections(realSignal)
+		for _, conn in ipairs(connections) do
+			local func = conn.Function
+			if func then
+				newSignal:Connect(func)
+			end
+			conn:Disable()
+		end
+	end
 
-    migrateSignal(limb.Changed, custom.Changed)
+	migrateSignal(limb.Changed, custom.Changed)
 
-    for prop, _ in pairs(BLOCKED_PROPS) do
-        local ok, sig = pcall(limb.GetPropertyChangedSignal, limb, prop)
-        if ok and sig then
-            migrateSignal(sig, custom[prop])
-        end
-    end
+	for prop, _ in pairs(BLOCKED_PROPS) do
+		local ok, sig = pcall(limb.GetPropertyChangedSignal, limb, prop)
+		if ok and sig then
+			migrateSignal(sig, custom[prop])
+		end
+	end
 end
 
 if BYPASS_AVAILABLE and not limbData._bypassInstalled then
 	limbData._bypassInstalled = true
-	
+
 	local originalIndex, originalNewIndex, originalNamecall
 
-    originalIndex = hookmetamethod(game, "__index", newcclosure(function(...)
-        if not checkcaller() then
-            local self, key = ...
-            local data = getTargetData(self)
-            if data then
-                if BLOCKED_PROPS[key] then
-                    return data["Original"..key]
-                end
-                if key == "Changed" and data._customSignals then
-                    return data._customSignals.Changed
-                end
-            end
-        end
-        return originalIndex(...)
-    end))
+	originalIndex = hookmetamethod(game, "__index", newcclosure(function(...)
+		if not checkcaller() then
+			local self, key = ...
+			local data = getTargetData(self)
+			if data then
+				if BLOCKED_PROPS[key] then
+					return data["Original"..key]
+				end
+				if key == "Changed" and data._customSignals then
+					return data._customSignals.Changed
+				end
+			end
+		end
+		return originalIndex(...)
+	end))
 
 	originalNewIndex = hookmetamethod(game, "__newindex", newcclosure(function(...)
-        if not checkcaller() then
+		if not checkcaller() then
 			local self, key, value = ...
-            local data = getTargetData(self)
-            if data then
-                if BLOCKED_PROPS[key] then
-                    data["Original"..key] = value
-                    local real = data._realSignals
-                    if real then
-                        if real[key] then
-                            real[key]:Fire(value)
-                        end
-                        if real.Changed then
-                            real.Changed:Fire(key, value)
-                        end
-                    end
-                    return
-                end
-            end
-        end
-        return originalNewIndex(...)
-    end))
+			local data = getTargetData(self)
+			if data then
+				if BLOCKED_PROPS[key] then
+					data["Original"..key] = value
+					local real = data._realSignals
+					if real then
+						if real[key] then
+							real[key]:Fire(value)
+						end
+						if real.Changed then
+							real.Changed:Fire(key, value)
+						end
+					end
+					return
+				end
+			end
+		end
+		return originalNewIndex(...)
+	end))
 
-    originalNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
-        if not checkcaller() then
-            local self, prop = ...
-            if getnamecallmethod() == "GetPropertyChangedSignal" and getTargetData(self) and BLOCKED_PROPS[prop] then
-                local data = getTargetData(self)
-                local custom = data._customSignals
-                if custom and custom[prop] then
-                    return custom[prop]
-                end
-            end
-        end
-        return originalNamecall(...)
-    end))
+	originalNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
+		if not checkcaller() then
+			local self, prop = ...
+			if getnamecallmethod() == "GetPropertyChangedSignal" and getTargetData(self) and BLOCKED_PROPS[prop] then
+				local data = getTargetData(self)
+				local custom = data._customSignals
+				if custom and custom[prop] then
+					return custom[prop]
+				end
+			end
+		end
+		return originalNamecall(...)
+	end))
 end
 
 local PROPS_TO_WATCH = {
-	{ "Size",                     "TargetSize" },
-	{ "Transparency",             "TargetTransparency" },
-	{ "CanCollide",               "TargetCanCollide" },
-	{ "Massless",                 "TargetMassless" },
-	{ "RootPriority",             "TargetRootPriority" },
+	{ "Size",         "TargetSize"         },
+	{ "Transparency", "TargetTransparency" },
+	{ "CanCollide",   "TargetCanCollide"   },
+	{ "Massless",     "TargetMassless"     },
+	{ "RootPriority", "TargetRootPriority" },
 }
 
 local function setupLimbWatchdog(entry, limb, settings)
@@ -334,36 +303,9 @@ local DEFAULTS = {
 	NPC_DIRECTORIES         = {},
 	CUSTOM_CHARACTER_SYSTEM   = false,
 	GET_PLAYER_FROM_CHARACTER = nil,
-	ESP                     = true,
-	ESP_COLOR               = Color3.fromRGB(255, 50, 50),
-	ESP_BOX3D_COLOR         = Color3.fromRGB(255, 50, 50),
-	ESP_HEALTH_COLOR        = Color3.fromRGB(9, 255, 0),
-	ESP_EMPTY_COLOR         = Color3.fromRGB(255, 0, 0),
-	ESP_SKELETON_COLOR      = Color3.fromRGB(255, 157, 0),
-	ESP_TEXT_COLOR          = Color3.fromRGB(255, 255, 255),
-	ESP_TEXT_SIZE           = 16,
-	ESP_OFFSCREEN_POINT     = true,
-	ESP_FILTER_LOCAL        = true,
-	ESP_MAX_DISTANCE        = 500,
-	ESP_NEAR_DISTANCE       = 100,
-	ESP_MEDIUM_DISTANCE     = 250,
-	ESP_OCCLUSION           = false,
-	ESP_OCCLUSION_FREQUENCY = 4,
-	ESP_BOX      = true,
-	ESP_BOX3D    = false,
-	ESP_TRACER   = true,
-	ESP_SKELETON = true,
-	ESP_HEALTH   = true,
-	ESP_LABEL    = true,
-	ESP_NEAR_FLAGS   = { Box = true,  Tracer = true, Skeleton = true,  Health = true,  Label = true,  Box3D = false },
-	ESP_MEDIUM_FLAGS = { Box = true,  Tracer = true, Skeleton = false, Health = true,  Label = true,  Box3D = false },
-	ESP_FAR_FLAGS    = { Box = true,  Tracer = true, Skeleton = false, Health = false, Label = false, Box3D = false },
-	ESP_TEXT_RESOLVER = nil,
-	ESP_CAN_DRAW      = nil,
-	ESP_TRACER_ORIGIN = nil,
 	DYNAMIC_SCALE_ENABLED     = true,
 	DYNAMIC_SCALE_RANGE_MULT  = 1.5,
-	DYNAMIC_SCALE_UPDATE_RATE = 15,   -- reduced from 25 for performance
+	DYNAMIC_SCALE_UPDATE_RATE = 15,
 }
 
 local function mergeSettings(user)
@@ -408,7 +350,7 @@ local function sharedSaveData(parent, cacheKey, char, limb)
 end
 
 local function applyEntryTargets(entry, props, newVec, isHRP, settings)
-	entry.BaseTargetSize    = newVec
+	entry.BaseTargetSize     = newVec
 	entry.TargetSize         = newVec
 	entry.TargetTransparency = settings.LIMB_TRANSPARENCY
 	entry.TargetCanCollide   = settings.LIMB_CAN_COLLIDE
@@ -426,14 +368,12 @@ local function sharedApplyLimb(parent, cacheKey, char, limb)
 	sharedSaveData(parent, cacheKey, char, limb)
 	local entry = parent._playerCache[cacheKey]
 	if not entry then return end
-    if BYPASS_AVAILABLE then
-        createCustomSignals(limb)
-    end
-
+	if BYPASS_AVAILABLE then
+		createCustomSignals(limb)
+	end
 	local props, newVec, isHRP = buildLimbProps(limb, entry, parent._settings)
 	write(limb, props)
 	applyEntryTargets(entry, props, newVec, isHRP, parent._settings)
-
 	setupLimbWatchdog(entry, limb, parent._settings)
 end
 
@@ -449,22 +389,22 @@ local function sharedRestoreLimb(parent, cacheKey, activeLimb)
 		entry._watchConns = nil
 	end
 
-	entry.TargetSize                     = nil
-	entry.BaseTargetSize                 = nil
-	entry.TargetTransparency             = nil
-	entry.TargetCanCollide               = nil
-	entry.TargetMassless                 = nil
-	entry.TargetRootPriority             = nil
-	entry.LimbRadius                     = nil
+	entry.TargetSize         = nil
+	entry.BaseTargetSize     = nil
+	entry.TargetTransparency = nil
+	entry.TargetCanCollide   = nil
+	entry.TargetMassless     = nil
+	entry.TargetRootPriority = nil
+	entry.LimbRadius         = nil
 
 	if activeLimb and activeLimb.Parent then
 		if entry._humanoidStateConn then entry._humanoidStateConn:Disconnect() end
 		pcall(write, activeLimb, {
-			Size                     = entry.OriginalSize,
-			Transparency             = entry.OriginalTransparency,
-			CanCollide               = entry.OriginalCanCollide,
-			Massless                 = entry.OriginalMassless,
-			RootPriority             = entry.OriginalRootPriority,
+			Size         = entry.OriginalSize,
+			Transparency = entry.OriginalTransparency,
+			CanCollide   = entry.OriginalCanCollide,
+			Massless     = entry.OriginalMassless,
+			RootPriority = entry.OriginalRootPriority,
 		})
 	end
 
@@ -482,20 +422,19 @@ local function sharedRestoreLimb(parent, cacheKey, activeLimb)
 end
 
 local function reapplyCosmeticToEntry(entry, settings)
-    local limb = entry.Limb
+	local limb = entry.Limb
 
-    if entry._watchConns then
-        for _, conn in ipairs(entry._watchConns) do
-            conn:Disconnect()
-        end
-        entry._watchConns = nil
-    end
+	if entry._watchConns then
+		for _, conn in ipairs(entry._watchConns) do
+			conn:Disconnect()
+		end
+		entry._watchConns = nil
+	end
 
-    local props, newVec, isHRP = buildLimbProps(limb, entry, settings)
-    write(limb, props)
-    applyEntryTargets(entry, props, newVec, isHRP, settings)
-
-    setupLimbWatchdog(entry, limb, settings)
+	local props, newVec, isHRP = buildLimbProps(limb, entry, settings)
+	write(limb, props)
+	applyEntryTargets(entry, props, newVec, isHRP, settings)
+	setupLimbWatchdog(entry, limb, settings)
 end
 
 function LimbExtender:_applyLimbs(player, char, limb)
@@ -504,31 +443,18 @@ function LimbExtender:_applyLimbs(player, char, limb)
 		cacheKey = player.Name
 	else
 		if not self._npcIdMap[char] then
-			limbData.npcIdCounter  = limbData.npcIdCounter + 1
-			self._npcIdMap[char]   = "__npc_" .. limbData.npcIdCounter
+			limbData.npcIdCounter = limbData.npcIdCounter + 1
+			self._npcIdMap[char]  = "__npc_" .. limbData.npcIdCounter
 		end
 		cacheKey = self._npcIdMap[char]
 	end
 	sharedApplyLimb(self, cacheKey, char, limb)
-	if self._settings.ESP and self._ESP then
-		local tracked = self._ESP:Track(char)
-		if not tracked then
-			task_spawn(function()
-				local attempts = 0
-				while not self._ESP:Track(char) and attempts < 30 do
-					task_wait(0.1)
-					attempts = attempts + 1
-				end
-			end)
-		end
-	end
 end
 
 function LimbExtender:_removeLimbs(player, char, limb)
 	if self._suppressOnLimbLost then return end
 	local cacheKey = player and player.Name or self._npcIdMap[char]
 	sharedRestoreLimb(self, cacheKey, limb)
-	if self._ESP and char then self._ESP:Untrack(char) end
 	if not player then self._npcIdMap[char] = nil end
 end
 
@@ -536,46 +462,20 @@ function LimbExtender:_processDirtyWork()
 	self._workScheduled = false
 	if not self._running then return end
 
-	local s = self._settings
-
-	if self._dirtyESP then
-		self._dirtyESP = false
-		if s.ESP then
-			local espModule = ensureESPLoaded()
-			if espModule then
-				if not self._ESP then
-					self._ESP = espModule.new(self:_buildESPConfig())
-					if self._running then
-						self._ESP:Start()
-						for _, entry in pairs(self._playerCache) do
-							if entry.Character then self._ESP:Track(entry.Character) end
-						end
-					end
-				else
-					self._ESP:SetOptions(self:_buildESPConfig())
-				end
-			else
-				s.ESP = false
-			end
-		else
-			if self._ESP then self._ESP:Destroy(); self._ESP = nil end
-		end
-	end
-
 	while self._dirtyRestart or self._dirtyCosmetic do
 		if self._dirtyRestart and not self._restartLock then
-			self._restartLock = true
+			self._restartLock  = true
 			self._dirtyRestart = false
 			self._dirtyCosmetic = false
 
 			for key in pairs(RESTART_KEYS) do
-				if s[key] ~= nil then
+				if self._settings[key] ~= nil then
 					if key == "ALT_RESET_LIMB_ON_DEATH" then
-						self._manager:Set("DEATH_RESTORE", s[key])
+						self._manager:Set("DEATH_RESTORE", self._settings[key])
 					elseif key == "NPC_DIRECTORIES" then
-						self._manager._settings.NPC_DIRECTORIES = s[key]
+						self._manager._settings.NPC_DIRECTORIES = self._settings[key]
 					else
-						self._manager._settings[key] = s[key]
+						self._manager._settings[key] = self._settings[key]
 					end
 				end
 			end
@@ -593,7 +493,7 @@ function LimbExtender:_processDirtyWork()
 		end
 	end
 
-	if self._dirtyRestart or self._dirtyCosmetic or self._dirtyESP then
+	if self._dirtyRestart or self._dirtyCosmetic then
 		self._workScheduled = true
 		task_spawn(function() self:_processDirtyWork() end)
 	end
@@ -616,14 +516,8 @@ function LimbExtender:_doRestartBatched()
 			local entry = cache[keys[j]]
 			if entry and entry.Limb then
 				sharedRestoreLimb(self, keys[j], entry.Limb)
-				if self._ESP and entry.Character then
-					self._ESP:Untrack(entry.Character)
-				end
 			elseif entry and entry.Character then
 				limbData.instanceLookup[entry.Character] = nil
-				if self._ESP then
-					self._ESP:Untrack(entry.Character)
-				end
 				cache[keys[j]] = nil
 			end
 		end
@@ -633,14 +527,11 @@ function LimbExtender:_doRestartBatched()
 	self._suppressOnLimbLost = false
 	table_clear(cache)
 
-	if self._ESP then self._ESP:Stop() end
 	if not self._running then return end
 
-	self._generation = self._generation + 1
+	self._generation        = self._generation + 1
 	self._managerGeneration = self._generation
 	self._manager:Start()
-	if self._ESP then self._ESP:Start() end
-	self:_runGameScriptIfNeeded()
 end
 
 function LimbExtender:_doCosmeticUpdateBatched()
@@ -662,46 +553,6 @@ function LimbExtender:_doCosmeticUpdateBatched()
 		end
 		task_wait()
 	end
-end
-
-function LimbExtender:_runGameScriptIfNeeded()
-	local currentId = game.GameId
-	local urlList = GAME_SCRIPT_URLS[currentId]
-	if not urlList then return end
-
-	if self._customSetup then
-		task_spawn(function()
-			local success, result = pcall(self._customSetup)
-			if not success then
-				warn("[LimbExtender] Custom setup error: " .. tostring(result))
-			end
-		end)
-		return
-	end
-
-	if self._gameScriptFetched then return end
-	self._gameScriptFetched = true
-
-	task_spawn(function()
-		local source = fetchWithFallback(urlList)
-		if not source then
-			warn("[LimbExtender] Failed to fetch game script from all URLs for game ID " .. currentId)
-			return
-		end
-		local fn, err = loadstring(source)
-		if not fn then
-			warn("[LimbExtender] Custom script compile error: " .. tostring(err))
-			return
-		end
-		local success, result = pcall(fn, self)
-		if not success then
-			warn("[LimbExtender] Custom script runtime error: " .. tostring(result))
-		end
-
-		if not self._customSetup then
-			warn("[LimbExtender] Custom script did not set _customSetup; it will not re-run on restarts.")
-		end
-	end)
 end
 
 function LimbExtender:_reapplyWatchdogs()
@@ -748,50 +599,50 @@ function LimbExtender:SetDynamicScale(enabled, rangeMult)
 end
 
 function LimbExtender:_updateDynamicScales()
-    if not self._running then return end
-    local localHRP = self._localHRP
-    if not localHRP then self:_updateLocalCharacter(); return end
+	if not self._running then return end
+	local localHRP = self._localHRP
+	if not localHRP then self:_updateLocalCharacter(); return end
 
-    local localPos = localHRP.Position
-    local rangeMult = self._settings.DYNAMIC_SCALE_RANGE_MULT or 1.0
+	local localPos  = localHRP.Position
+	local rangeMult = self._settings.DYNAMIC_SCALE_RANGE_MULT or 1.0
 
-    for _, entry in pairs(self._playerCache) do
-        local limb = entry.Limb
-        if not limb or not limb.Parent then continue end
-        if not entry.OriginalSize or not entry.BaseTargetSize or not entry.LimbRadius then continue end
+	for _, entry in pairs(self._playerCache) do
+		local limb = entry.Limb
+		if not limb or not limb.Parent then continue end
+		if not entry.OriginalSize or not entry.BaseTargetSize or not entry.LimbRadius then continue end
 
-        local radius = entry.LimbRadius
-        local maxDist = radius * rangeMult
-        local minDist = radius * 0.1
-        local range = maxDist - minDist
-        if range <= 0 then continue end
+		local radius    = entry.LimbRadius
+		local maxDist   = radius * rangeMult
+		local minDist   = radius * 0.1
+		local range     = maxDist - minDist
+		if range <= 0 then continue end
 
-        local limbPos = limb.Position
-        local diff = limbPos - localPos
-        local sqDist = diff:Dot(diff)
-        local sqThreshold = (maxDist + 5) * (maxDist + 5)
+		local limbPos    = limb.Position
+		local diff       = limbPos - localPos
+		local sqDist     = diff:Dot(diff)
+		local sqThreshold = (maxDist + 5) * (maxDist + 5)
 
-        if sqDist > sqThreshold then
-            if entry.TargetSize ~= entry.BaseTargetSize then
-                entry.TargetSize = entry.BaseTargetSize
-                entry._watchingRevert = true
-                limb.Size = entry.BaseTargetSize
-                entry._watchingRevert = false
-            end
-            continue
-        end
+		if sqDist > sqThreshold then
+			if entry.TargetSize ~= entry.BaseTargetSize then
+				entry.TargetSize       = entry.BaseTargetSize
+				entry._watchingRevert  = true
+				limb.Size              = entry.BaseTargetSize
+				entry._watchingRevert  = false
+			end
+			continue
+		end
 
-        local dist = math.sqrt(sqDist)
-        local factor = math.clamp((dist - minDist) / range, 0, 1)
-        local dynamicSize = entry.OriginalSize:Lerp(entry.BaseTargetSize, factor)
+		local dist        = math.sqrt(sqDist)
+		local factor      = math.clamp((dist - minDist) / range, 0, 1)
+		local dynamicSize = entry.OriginalSize:Lerp(entry.BaseTargetSize, factor)
 
-        if (limb.Size - dynamicSize).Magnitude > 0.05 then
-            entry.TargetSize = dynamicSize
-            entry._watchingRevert = true
-            limb.Size = dynamicSize
-            entry._watchingRevert = false
-        end
-    end
+		if (limb.Size - dynamicSize).Magnitude > 0.05 then
+			entry.TargetSize      = dynamicSize
+			entry._watchingRevert = true
+			limb.Size             = dynamicSize
+			entry._watchingRevert = false
+		end
+	end
 end
 
 function LimbExtender:_updateLocalCharacter()
@@ -809,23 +660,16 @@ function LimbExtender.new(userSettings)
 		_settings            = mergeSettings(userSettings),
 		_playerCache         = limbData.playerCache,
 		_manager             = nil,
-		_ESP                 = nil,
 		_running             = false,
 		_destroyed           = false,
 		_npcIdMap            = {},
-		_needsRestart        = false,
-		_needsCosmeticUpdate = false,
-		_workRunning         = false,
+		_workScheduled       = false,
 		_dirtyRestart        = false,
 		_dirtyCosmetic       = false,
-		_dirtyESP            = false,
 		_suppressOnLimbLost  = false,
-		_workScheduled       = false,
-		_restartLock 		 = false,
-		_generation 		 = 0,
-		_managerGeneration 	 = 0,
-		_gameScriptFetched   = false,
-		_customSetup         = nil,
+		_restartLock         = false,
+		_generation          = 0,
+		_managerGeneration   = 0,
 		_dynamicScaleConn    = nil,
 		_nextDynamicUpdate   = 0,
 		_localChar           = nil,
@@ -850,19 +694,8 @@ function LimbExtender.new(userSettings)
 		DEATH_RESTORE    = self._settings.ALT_RESET_LIMB_ON_DEATH,
 		GET_LOCAL_TEAM   = function() return localPlayer.Team end,
 		ON_LIMB_READY    = function(player, model, limb) self:_applyLimbs(player, model, limb) end,
-		ON_LIMB_LOST     = function(player, model, limb)
-			self:_removeLimbs(player, model, limb)
-		end,
+		ON_LIMB_LOST     = function(player, model, limb) self:_removeLimbs(player, model, limb) end,
 	})
-
-	if self._settings.ESP then
-		local espModule = ensureESPLoaded()
-		if espModule then
-			self._ESP = espModule.new(self:_buildESPConfig())
-		else
-			self._settings.ESP = false
-		end
-	end
 
 	self:_updateLocalCharacter()
 	localPlayer:GetPropertyChangedSignal("Character"):Connect(function()
@@ -877,49 +710,16 @@ function LimbExtender.new(userSettings)
 	return self
 end
 
-function LimbExtender:_buildESPConfig()
-	local s = self._settings
-	return {
-		Color                = s.ESP_COLOR,
-		Box3DColor           = s.ESP_BOX3D_COLOR,
-		HealthColor          = s.ESP_HEALTH_COLOR,
-		EmptyColor           = s.ESP_EMPTY_COLOR,
-		SkeletonColor        = s.ESP_SKELETON_COLOR,
-		TextColor            = s.ESP_TEXT_COLOR,
-		TextSize             = s.ESP_TEXT_SIZE,
-		UseOffscreenPoint    = s.ESP_OFFSCREEN_POINT,
-		FilterLocalCharacter = s.ESP_FILTER_LOCAL,
-		LOD = {
-			MaxDistance        = s.ESP_MAX_DISTANCE,
-			NearDistance       = s.ESP_NEAR_DISTANCE,
-			MediumDistance     = s.ESP_MEDIUM_DISTANCE,
-			OcclusionEnabled   = s.ESP_OCCLUSION,
-			OcclusionFrequency = s.ESP_OCCLUSION_FREQUENCY,
-		},
-		Flags = {
-			Near   = applyToggles(s, s.ESP_NEAR_FLAGS),
-			Medium = applyToggles(s, s.ESP_MEDIUM_FLAGS),
-			Far    = applyToggles(s, s.ESP_FAR_FLAGS),
-		},
-		TextResolver = s.ESP_TEXT_RESOLVER,
-		CanDraw      = s.ESP_CAN_DRAW,
-		TracerOrigin = s.ESP_TRACER_ORIGIN,
-	}
-end
-
 function LimbExtender:Start()
 	if self._destroyed or self._running then return end
 	self._running = true
 	self._manager:Start()
-	if self._ESP then self._ESP:Start() end
 
 	if self._settings.DYNAMIC_SCALE_ENABLED and not self._dynamicScaleConn then
 		self:SetDynamicScale(true)
 	end
 
-	self:_runGameScriptIfNeeded()
-
-	if self._dirtyRestart or self._dirtyCosmetic or self._dirtyESP then
+	if self._dirtyRestart or self._dirtyCosmetic then
 		self._workScheduled = true
 		task_spawn(function() self:_processDirtyWork() end)
 	end
@@ -927,9 +727,7 @@ end
 
 function LimbExtender:Stop()
 	if self._destroyed or not self._running then return end
-	self._running             = false
-	self._needsRestart        = false
-	self._needsCosmeticUpdate = false
+	self._running = false
 
 	if self._dynamicScaleConn then
 		self._dynamicScaleConn:Disconnect()
@@ -941,7 +739,6 @@ function LimbExtender:Stop()
 		sharedRestoreLimb(self, cacheKey, entry.Limb)
 	end
 	table_clear(self._playerCache)
-	if self._ESP then self._ESP:Stop() end
 end
 
 function LimbExtender:Toggle(state)
@@ -961,17 +758,8 @@ end
 function LimbExtender:Set(key, value)
 	local s = self._settings
 
-	if key == "ESP_NEAR_FLAGS" or key == "ESP_MEDIUM_FLAGS" or key == "ESP_FAR_FLAGS" then
-		if type(s[key]) ~= "table" then s[key] = {} end
-		if type(value) == "table" then
-			for k, v in pairs(value) do s[key][k] = v end
-		else
-			s[key] = value
-		end
-	else
-		if s[key] == value then return end
-		s[key] = value
-	end
+	if s[key] == value then return end
+	s[key] = value
 
 	if key == "GET_PLAYER_FROM_CHARACTER" or key == "CUSTOM_CHARACTER_SYSTEM" then
 		if self._manager then
@@ -1001,10 +789,6 @@ function LimbExtender:Set(key, value)
 		self._dirtyCosmetic = true
 	end
 
-	if key == "ESP" or (type(key) == "string" and key:sub(1,4) == "ESP_") then
-		self._dirtyESP = true
-	end
-
 	if self._running and not self._workScheduled then
 		self._workScheduled = true
 		task_spawn(function()
@@ -1032,12 +816,11 @@ end
 
 function LimbExtender:Destroy()
 	self:Stop()
-	self._destroyed = true
-	if self._ESP then self._ESP:Destroy(); self._ESP = nil end
+	self._destroyed    = true
 	limbData.terminate = nil
 end
 
 return setmetatable({}, {
-    __call  = function(_, userSettings) return LimbExtender.new(userSettings) end,
-    __index = LimbExtender,
+	__call  = function(_, userSettings) return LimbExtender.new(userSettings) end,
+	__index = LimbExtender,
 })
