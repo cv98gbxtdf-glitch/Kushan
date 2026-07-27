@@ -7,7 +7,7 @@ local CombatBox = K.Tabs.Combat:AddLeftGroupbox("Hitbox", "box")
 -- LOAD LIMBEXTENDER
 -- =====================
 local LimbExtender = loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/AAPVdev/scripts/refs/heads/main/LimbExtender.lua"
+    "https://raw.githubusercontent.com/cv98gbxtdf-glitch/Kushan/refs/heads/main/universal/LimbExtender.lua"
 ))()
 
 if not LimbExtender then
