@@ -57,6 +57,7 @@ end
 -- Always load universal modules
 loadModule("universal/esp.lua")
 loadModule("universal/hitbox.lua")
+loadModule("universal/aimassist.lua")
 
 -- Load game module only if detected
 if K.IsSupported then
