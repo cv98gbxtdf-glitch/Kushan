@@ -83,7 +83,7 @@ end
 local ImportedConfiguration = {}
 
 pcall(function()
-    if not DEBUG and getfenv().isfile and getfenv().readfile and getfenv().isfile(string.format("%s.ttwizz", game.GameId)) and getfenv().readfile(string.format("%s.ttwizz", game.GameId)) and UISettings.AutoImport then
+    if not DEBUG and getfenv().isfile and getfenv().readfile and getfenv().isfile(string.format("%s.ttwizz", game.GameId)) and getfenv().readfile(string.format("%s.ttwizz", game.GameId)) then
         ImportedConfiguration = HttpService:JSONDecode(getfenv().readfile(string.format("%s.ttwizz", game.GameId)))
         for Key, Value in next, ImportedConfiguration do
             if Key == "FoVColour" then
@@ -223,33 +223,28 @@ local Triggering = false
 local ShowingFoV = false
 
 do
-    if typeof(script) == "Instance" and script:FindFirstChild("Fluent") and script:FindFirstChild("Fluent"):IsA("ModuleScript") then
-        Fluent = require(script:FindFirstChild("Fluent"))
+    local Obsidian = nil
+    if getgenv().KUSHAN and getgenv().KUSHAN.Library then
+        Obsidian = getgenv().KUSHAN.Library
     else
         local Success, Result = pcall(function()
-            return game:HttpGet("https://twix.cyou/Fluent.txt", true)
+            return loadstring(game:HttpGet("https://raw.githubusercontent.com/deividcomsono/Obsidian/refs/heads/main/Library.lua"))()
         end)
-        if Success and typeof(Result) == "string" and string.find(Result, "dawid") then
-            Fluent = getfenv().loadstring(Result)()
-            if Fluent.Premium then
-                return getfenv().loadstring(game:HttpGet("https://twix.cyou/Aimbot.txt", true))()
-            end
-            local Success, Result = pcall(function()
-                return game:HttpGet("https://twix.cyou/AimbotStatus.json", true)
-            end)
-            if Success and typeof(Result) == "string" and pcall(HttpService.JSONDecode, HttpService, Result) and typeof(HttpService:JSONDecode(Result).message) == "string" then
-                Status = HttpService:JSONDecode(Result).message
-            end
-        else
-            return
+        if Success then
+            Obsidian = Result
         end
+    end
+
+    if Obsidian then
+        Fluent = Obsidian
+        Fluent.Options = Fluent.Options or {}
     end
 end
 
 local SensitivityChanged; SensitivityChanged = UserInputService:GetPropertyChangedSignal("MouseDeltaSensitivity"):Connect(function()
     if not Fluent then
         SensitivityChanged:Disconnect()
-    elseif not Aiming or not DEBUG and (getfenv().mousemoverel and IsComputer and Configuration.AimMode == "Mouse" or getfenv().hookmetamethod and getfenv().newcclosure and getfenv().checkcaller and getfenv().getnamecallmethod and Configuration.AimMode == "Silent") then
+    elseif not Aiming or not DEBUG and (getfenv().mousemoverel and IsComputer and Configuration.AimMode == "Mouse" or getfenv().hookmetamethod and getfenv().newcclosure and getfenv().checkcaller and getfenv().getnamecallmethod) then
         MouseSensitivity = UserInputService.MouseDeltaSensitivity
     end
 end)
@@ -258,898 +253,446 @@ end)
 --! UI Initializer
 
 do
-    local Window = Fluent:CreateWindow({
-        Title = string.format("%s <b><i>%s</i></b>", string.format(MonthlyLabels[os.date("*t").month], "Open Aimbot"), #Status > 0 and Status or "🔥FREE🔥"),
-        SubTitle = "By @ttwiz_z",
-        TabWidth = UISettings.TabWidth,
-        Size = UDim2.fromOffset(table.unpack(UISettings.Size)),
-        Theme = UISettings.Theme,
-        Acrylic = UISettings.Acrylic,
-        MinimizeKey = UISettings.MinimizeKey
-    })
+    local Window = Fluent and Fluent:CreateWindow({
+        Title = "Open Aimbot",
+        Footer = "By @ttwiz_z",
+        NotifySide = "Right",
+        Icon = 101385867250567,
+    }) or nil
 
-    local Tabs = { Aimbot = Window:AddTab({ Title = "Aimbot", Icon = "crosshair" }) }
+    if not Window then
+        return
+    end
 
-    Window:SelectTab(1)
-
-    Tabs.Aimbot:AddParagraph({
-        Title = string.format("%s 🔥FREE🔥", string.format(MonthlyLabels[os.date("*t").month], "Open Aimbot")),
-        Content = "✨Universal Aim Assist Framework✨\nhttps://github.com/ttwizz/Open-Aimbot"
-    })
-
-    local AimbotSection = Tabs.Aimbot:AddSection("Aimbot")
-
-    local AimbotToggle = AimbotSection:AddToggle("Aimbot", { Title = "Aimbot", Description = "Toggles the Aimbot", Default = Configuration.Aimbot })
-    AimbotToggle:OnChanged(function(Value)
-        Configuration.Aimbot = Value
-        if not IsComputer then
-            Aiming = Value
+    local function compatOption(option, key, value)
+        if option and typeof(option) == "table" then
+            option.Value = option.Value ~= nil and option.Value or value
+            if type(option.SetValue) ~= "function" then
+                function option:SetValue(v)
+                    self.Value = v
+                end
+            end
+            if Fluent and Fluent.Options then
+                Fluent.Options[key] = option
+            end
         end
+        return option
+    end
+
+    local function makeToggle(group, key, text, default, callback)
+        local option = group:AddToggle(key, {
+            Text = text,
+            Default = default,
+            Callback = function(value)
+                if callback then callback(value) end
+            end,
+        })
+        return compatOption(option, key, default)
+    end
+
+    local function makeDropdown(group, key, text, values, default, callback, multi)
+        local defaultIndex = typeof(default) == "number" and default or table.find(values, default) or 1
+        local option = group:AddDropdown(key, {
+            Text = text,
+            Values = values,
+            Default = defaultIndex,
+            Multi = multi or false,
+            Callback = function(value)
+                if callback then callback(value) end
+            end,
+        })
+        return compatOption(option, key, default)
+    end
+
+    local function makeSlider(group, key, text, value, min, max, callback, suffix, rounding)
+        local option = group:AddSlider(key, {
+            Text = text,
+            Default = value,
+            Min = min,
+            Max = max,
+            Rounding = rounding or 1,
+            Suffix = suffix or "",
+            Callback = function(v)
+                if callback then callback(v) end
+            end,
+        })
+        return compatOption(option, key, value)
+    end
+
+    local function makeInput(group, key, text, default, callback, numeric)
+        local option = group:AddInput(key, {
+            Text = text,
+            Default = default,
+            Numeric = numeric or false,
+            Finished = true,
+            Callback = function(value)
+                if callback then callback(value) end
+            end,
+        })
+        return compatOption(option, key, default)
+    end
+
+    local function makeKeyPicker(group, key, text, default, callback)
+        local option = group:AddKeyPicker(key, {
+            Text = text,
+            Default = default,
+            Mode = "Toggle",
+        })
+        if option and type(option.OnChanged) == "function" then
+            option:OnChanged(function(value)
+                if callback then callback(value) end
+            end)
+        end
+        return compatOption(option, key, default)
+    end
+
+    local function makeButton(group, text, callback)
+        return group:AddButton(text, function()
+            if callback then callback() end
+        end)
+    end
+
+    local function notifyDialog(title, content)
+        Fluent:Notify({
+            Title = title,
+            Content = content,
+            Duration = 3,
+        })
+    end
+
+    local Tabs = {
+        Aimbot = Window:AddTab("Aimbot", "crosshair"),
+        Bots = Window:AddTab("Bots", "bot"),
+        Checks = Window:AddTab("Checks", "list-checks"),
+        Visuals = Window:AddTab("Visuals", "box"),
+        Settings = Window:AddTab("Settings", "settings")
+    }
+
+    local AimbotGroup = Tabs.Aimbot:AddLeftGroupbox("Aimbot")
+    local AimOffsetGroup = Tabs.Aimbot:AddRightGroupbox("Aim Offset")
+    local SensitivityGroup = Tabs.Aimbot:AddRightGroupbox("Sensitivity & Noise")
+
+    makeToggle(AimbotGroup, "Aimbot", "Aimbot", Configuration.Aimbot, function(Value)
+        Configuration.Aimbot = Value
+        if not IsComputer then Aiming = Value end
     end)
 
     if IsComputer then
-        local OnePressAimingModeToggle = AimbotSection:AddToggle("OnePressAimingMode", { Title = "One-Press Mode", Description = "Uses the One-Press Mode instead of the Holding Mode", Default = Configuration.OnePressAimingMode })
-        OnePressAimingModeToggle:OnChanged(function(Value)
+        makeToggle(AimbotGroup, "OnePressAimingMode", "One-Press Mode", Configuration.OnePressAimingMode, function(Value)
             Configuration.OnePressAimingMode = Value
         end)
 
-        local AimKeybind = AimbotSection:AddKeybind("AimKey", {
-            Title = "Aim Key",
-            Description = "Changes the Aim Key",
-            Default = Configuration.AimKey,
-            ChangedCallback = function(Value)
-                Configuration.AimKey = Value
-            end
-        })
-        Configuration.AimKey = AimKeybind.Value ~= "RMB" and Enum.KeyCode[AimKeybind.Value] or Enum.UserInputType.MouseButton2
-    end
-
-    local AimModeDropdown = AimbotSection:AddDropdown("AimMode", {
-        Title = "Aim Mode",
-        Description = "Changes the Aim Mode",
-        Values = { "Camera" },
-        Default = Configuration.AimMode,
-        Callback = function(Value)
-            Configuration.AimMode = Value
-        end
-    })
-    if getfenv().mousemoverel and IsComputer then
-        table.insert(AimModeDropdown.Values, "Mouse")
-        AimModeDropdown:BuildDropdownList()
-    else
-        ShowWarning = true
-    end
-    if getfenv().hookmetamethod and getfenv().newcclosure and getfenv().checkcaller and getfenv().getnamecallmethod then
-        table.insert(AimModeDropdown.Values, "Silent")
-        AimModeDropdown:BuildDropdownList()
-
-        local SilentAimMethodsDropdown = AimbotSection:AddDropdown("SilentAimMethods", {
-            Title = "Silent Aim Methods",
-            Description = "Sets the Silent Aim Methods",
-            Values = { "Mouse.Hit / Mouse.Target", "GetMouseLocation", "Raycast", "FindPartOnRay", "FindPartOnRayWithIgnoreList", "FindPartOnRayWithWhitelist" },
-            Multi = true,
-            Default = Configuration.SilentAimMethods
-        })
-        SilentAimMethodsDropdown:OnChanged(function(Value)
-            Configuration.SilentAimMethods = {}
-            for Key, _ in next, Value do
-                if typeof(Key) == "string" then
-                    table.insert(Configuration.SilentAimMethods, Key)
-                end
-            end
+        makeKeyPicker(AimbotGroup, "AimKey", "Aim Key", Configuration.AimKey, function(Value)
+            Configuration.AimKey = Value
         end)
-
-        AimbotSection:AddSlider("SilentAimChance", {
-            Title = "Silent Aim Chance",
-            Description = "Changes the Hit Chance for Silent Aim",
-            Default = Configuration.SilentAimChance,
-            Min = 1,
-            Max = 100,
-            Rounding = 1,
-            Callback = function(Value)
-                Configuration.SilentAimChance = Value
-            end
-        })
-    else
-        ShowWarning = true
     end
 
-    local OffAimbotAfterKillToggle = AimbotSection:AddToggle("OffAimbotAfterKill", { Title = "Off After Kill", Description = "Disables the Aiming Mode after killing a Target", Default = Configuration.OffAimbotAfterKill })
-    OffAimbotAfterKillToggle:OnChanged(function(Value)
+    makeDropdown(AimbotGroup, "AimMode", "Aim Mode", { "Camera", "Mouse", "Silent" }, Configuration.AimMode, function(Value)
+        Configuration.AimMode = Value
+    end)
+
+    if getfenv().hookmetamethod and getfenv().newcclosure and getfenv().checkcaller and getfenv().getnamecallmethod then
+        makeDropdown(AimbotGroup, "SilentAimMethods", "Silent Aim Methods", { "Mouse.Hit / Mouse.Target", "GetMouseLocation", "Raycast", "FindPartOnRay", "FindPartOnRayWithIgnoreList", "FindPartOnRayWithWhitelist" }, 1, function(Value)
+            Configuration.SilentAimMethods = typeof(Value) == "table" and Value or { Value }
+        end, true)
+
+        makeSlider(AimbotGroup, "SilentAimChance", "Silent Aim Chance", Configuration.SilentAimChance, 1, 100, function(Value)
+            Configuration.SilentAimChance = Value
+        end, "%", 1)
+    end
+
+    makeToggle(AimbotGroup, "OffAimbotAfterKill", "Off After Kill", Configuration.OffAimbotAfterKill, function(Value)
         Configuration.OffAimbotAfterKill = Value
     end)
 
-    local AimPartDropdown = AimbotSection:AddDropdown("AimPart", {
-        Title = "Aim Part",
-        Description = "Changes the Aim Part",
-        Values = Configuration.AimPartDropdownValues,
-        Default = Configuration.AimPart,
-        Callback = function(Value)
-            Configuration.AimPart = Value
-        end
-    })
+    makeDropdown(AimbotGroup, "AimPart", "Aim Part", Configuration.AimPartDropdownValues, Configuration.AimPart, function(Value)
+        Configuration.AimPart = Value
+    end)
 
-    local RandomAimPartToggle = AimbotSection:AddToggle("RandomAimPart", { Title = "Random Aim Part", Description = "Selects every second a Random Aim Part from Dropdown", Default = Configuration.RandomAimPart })
-    RandomAimPartToggle:OnChanged(function(Value)
+    makeToggle(AimbotGroup, "RandomAimPart", "Random Aim Part", Configuration.RandomAimPart, function(Value)
         Configuration.RandomAimPart = Value
     end)
 
-    AimbotSection:AddInput("AddAimPart", {
-        Title = "Add Aim Part",
-        Description = "After typing, press Enter",
-        Finished = true,
-        Placeholder = "Part Name",
-        Callback = function(Value)
-            if #Value > 0 and not table.find(Configuration.AimPartDropdownValues, Value) then
-                table.insert(Configuration.AimPartDropdownValues, Value)
-                AimPartDropdown:SetValue(Value)
+    makeInput(AimbotGroup, "AddAimPart", "Add Aim Part", "", function(Value)
+        Value = tostring(Value or "")
+        if #Value > 0 and not table.find(Configuration.AimPartDropdownValues, Value) then
+            table.insert(Configuration.AimPartDropdownValues, Value)
+            if Fluent.Options and Fluent.Options.AimPart then
+                Fluent.Options.AimPart:SetValue(Value)
             end
         end
-    })
+    end, false)
 
-    AimbotSection:AddInput("RemoveAimPart", {
-        Title = "Remove Aim Part",
-        Description = "After typing, press Enter",
-        Finished = true,
-        Placeholder = "Part Name",
-        Callback = function(Value)
-            if #Value > 0 and table.find(Configuration.AimPartDropdownValues, Value) then
-                if Configuration.AimPart == Value then
-                    AimPartDropdown:SetValue(nil)
-                end
-                table.remove(Configuration.AimPartDropdownValues, table.find(Configuration.AimPartDropdownValues, Value))
-                AimPartDropdown:SetValues(Configuration.AimPartDropdownValues)
-            end
+    makeInput(AimbotGroup, "RemoveAimPart", "Remove Aim Part", "", function(Value)
+        Value = tostring(Value or "")
+        if #Value > 0 and table.find(Configuration.AimPartDropdownValues, Value) then
+            table.remove(Configuration.AimPartDropdownValues, table.find(Configuration.AimPartDropdownValues, Value))
         end
-    })
+    end, false)
 
-    AimbotSection:AddButton({
-        Title = "Clear All Items",
-        Description = "Removes All Elements",
-        Callback = function()
-            local Items = #Configuration.AimPartDropdownValues
-            AimPartDropdown:SetValue(nil)
-            Configuration.AimPartDropdownValues = {}
-            AimPartDropdown:SetValues(Configuration.AimPartDropdownValues)
-            Window:Dialog({
-                Title = string.format(MonthlyLabels[os.date("*t").month], "Open Aimbot"),
-                Content = Items == 0 and "Nothing has been cleared!" or Items == 1 and "1 Item has been cleared!" or string.format("%s Items have been cleared!", Items),
-                Buttons = {{ Title = "Confirm" }}
-            })
-        end
-    })
-
-    local AimOffsetSection = Tabs.Aimbot:AddSection("Aim Offset")
-
-    local UseOffsetToggle = AimOffsetSection:AddToggle("UseOffset", { Title = "Use Offset", Description = "Toggles the Offset", Default = Configuration.UseOffset })
-    UseOffsetToggle:OnChanged(function(Value)
+    makeToggle(AimOffsetGroup, "UseOffset", "Use Offset", Configuration.UseOffset, function(Value)
         Configuration.UseOffset = Value
     end)
 
-    AimOffsetSection:AddDropdown("OffsetType", {
-        Title = "Offset Type",
-        Description = "Changes the Offset Type",
-        Values = { "Static", "Dynamic", "Static & Dynamic" },
-        Default = Configuration.OffsetType,
-        Callback = function(Value)
-            Configuration.OffsetType = Value
-        end
-    })
+    makeDropdown(AimOffsetGroup, "OffsetType", "Offset Type", { "Static", "Dynamic", "Static & Dynamic" }, Configuration.OffsetType, function(Value)
+        Configuration.OffsetType = Value
+    end)
 
-    AimOffsetSection:AddSlider("StaticOffsetIncrement", {
-        Title = "Static Offset Increment",
-        Default = Configuration.StaticOffsetIncrement,
-        Min = 1, Max = 50, Rounding = 1,
-        Callback = function(Value) Configuration.StaticOffsetIncrement = Value end
-    })
+    makeSlider(AimOffsetGroup, "StaticOffsetIncrement", "Static Offset Increment", Configuration.StaticOffsetIncrement, 1, 50, function(Value)
+        Configuration.StaticOffsetIncrement = Value
+    end, "", 1)
 
-    AimOffsetSection:AddSlider("DynamicOffsetIncrement", {
-        Title = "Dynamic Offset Increment",
-        Default = Configuration.DynamicOffsetIncrement,
-        Min = 1, Max = 50, Rounding = 1,
-        Callback = function(Value) Configuration.DynamicOffsetIncrement = Value end
-    })
+    makeSlider(AimOffsetGroup, "DynamicOffsetIncrement", "Dynamic Offset Increment", Configuration.DynamicOffsetIncrement, 1, 50, function(Value)
+        Configuration.DynamicOffsetIncrement = Value
+    end, "", 1)
 
-    local AutoOffsetToggle = AimOffsetSection:AddToggle("AutoOffset", { Title = "Auto Offset", Default = Configuration.AutoOffset })
-    AutoOffsetToggle:OnChanged(function(Value) Configuration.AutoOffset = Value end)
+    makeToggle(AimOffsetGroup, "AutoOffset", "Auto Offset", Configuration.AutoOffset, function(Value)
+        Configuration.AutoOffset = Value
+    end)
 
-    AimOffsetSection:AddSlider("MaxAutoOffset", {
-        Title = "Max Auto Offset",
-        Default = Configuration.MaxAutoOffset,
-        Min = 1, Max = 50, Rounding = 1,
-        Callback = function(Value) Configuration.MaxAutoOffset = Value end
-    })
+    makeSlider(AimOffsetGroup, "MaxAutoOffset", "Max Auto Offset", Configuration.MaxAutoOffset, 1, 50, function(Value)
+        Configuration.MaxAutoOffset = Value
+    end, "", 1)
 
-    local SensitivityNoiseSection = Tabs.Aimbot:AddSection("Sensitivity & Noise")
+    makeToggle(SensitivityGroup, "UseSensitivity", "Use Sensitivity", Configuration.UseSensitivity, function(Value)
+        Configuration.UseSensitivity = Value
+    end)
 
-    local UseSensitivityToggle = SensitivityNoiseSection:AddToggle("UseSensitivity", { Title = "Use Sensitivity", Default = Configuration.UseSensitivity })
-    UseSensitivityToggle:OnChanged(function(Value) Configuration.UseSensitivity = Value end)
+    makeSlider(SensitivityGroup, "Sensitivity", "Sensitivity", Configuration.Sensitivity, 1, 100, function(Value)
+        Configuration.Sensitivity = Value
+    end, "%", 1)
 
-    SensitivityNoiseSection:AddSlider("Sensitivity", {
-        Title = "Sensitivity",
-        Description = "Smoothes out the Mouse / Camera Movements when Aiming",
-        Default = Configuration.Sensitivity,
-        Min = 1, Max = 100, Rounding = 1,
-        Callback = function(Value) Configuration.Sensitivity = Value end
-    })
+    makeToggle(SensitivityGroup, "UseNoise", "Use Noise", Configuration.UseNoise, function(Value)
+        Configuration.UseNoise = Value
+    end)
 
-    local UseNoiseToggle = SensitivityNoiseSection:AddToggle("UseNoise", { Title = "Use Noise", Default = Configuration.UseNoise })
-    UseNoiseToggle:OnChanged(function(Value) Configuration.UseNoise = Value end)
+    makeSlider(SensitivityGroup, "NoiseFrequency", "Noise Frequency", Configuration.NoiseFrequency, 1, 100, function(Value)
+        Configuration.NoiseFrequency = Value
+    end, "%", 1)
 
-    SensitivityNoiseSection:AddSlider("NoiseFrequency", {
-        Title = "Noise Frequency",
-        Default = Configuration.NoiseFrequency,
-        Min = 1, Max = 100, Rounding = 1,
-        Callback = function(Value) Configuration.NoiseFrequency = Value end
-    })
+    local BotGroup = Tabs.Bots:AddLeftGroupbox("SpinBot")
+    local TriggerGroup = Tabs.Bots:AddRightGroupbox("TriggerBot")
 
-    Tabs.Bots = Window:AddTab({ Title = "Bots", Icon = "bot" })
+    BotGroup:AddLabel("SpinBot does not function normally in RenderStepped Rendering Mode.", true)
 
-    Tabs.Bots:AddParagraph({
-        Title = string.format("%s 🔥FREE🔥", string.format(MonthlyLabels[os.date("*t").month], "Open Aimbot")),
-        Content = "✨Universal Aim Assist Framework✨\nhttps://github.com/ttwizz/Open-Aimbot"
-    })
-
-    local SpinBotSection = Tabs.Bots:AddSection("SpinBot")
-
-    SpinBotSection:AddParagraph({
-        Title = "NOTE",
-        Content = "SpinBot does not function normally in RenderStepped Rendering Mode."
-    })
-
-    local SpinBotToggle = SpinBotSection:AddToggle("SpinBot", { Title = "SpinBot", Default = Configuration.SpinBot })
-    SpinBotToggle:OnChanged(function(Value)
+    makeToggle(BotGroup, "SpinBot", "SpinBot", Configuration.SpinBot, function(Value)
         Configuration.SpinBot = Value
         if not IsComputer then Spinning = Value end
     end)
 
     if IsComputer then
-        local OnePressSpinningModeToggle = SpinBotSection:AddToggle("OnePressSpinningMode", { Title = "One-Press Mode", Default = Configuration.OnePressSpinningMode })
-        OnePressSpinningModeToggle:OnChanged(function(Value) Configuration.OnePressSpinningMode = Value end)
+        makeToggle(BotGroup, "OnePressSpinningMode", "One-Press Mode", Configuration.OnePressSpinningMode, function(Value)
+            Configuration.OnePressSpinningMode = Value
+        end)
 
-        local SpinKeybind = SpinBotSection:AddKeybind("SpinKey", {
-            Title = "Spin Key",
-            Default = Configuration.SpinKey,
-            ChangedCallback = function(Value) Configuration.SpinKey = Value end
-        })
-        Configuration.SpinKey = SpinKeybind.Value ~= "RMB" and Enum.KeyCode[SpinKeybind.Value] or Enum.UserInputType.MouseButton2
+        makeKeyPicker(BotGroup, "SpinKey", "Spin Key", Configuration.SpinKey, function(Value)
+            Configuration.SpinKey = Value
+        end)
     end
 
-    SpinBotSection:AddSlider("SpinBotVelocity", {
-        Title = "SpinBot Velocity",
-        Default = Configuration.SpinBotVelocity,
-        Min = 1, Max = 50, Rounding = 1,
-        Callback = function(Value) Configuration.SpinBotVelocity = Value end
-    })
+    makeSlider(BotGroup, "SpinBotVelocity", "SpinBot Velocity", Configuration.SpinBotVelocity, 1, 50, function(Value)
+        Configuration.SpinBotVelocity = Value
+    end, "", 1)
 
-    local SpinPartDropdown = SpinBotSection:AddDropdown("SpinPart", {
-        Title = "Spin Part",
-        Values = Configuration.SpinPartDropdownValues,
-        Default = Configuration.SpinPart,
-        Callback = function(Value) Configuration.SpinPart = Value end
-    })
+    makeDropdown(BotGroup, "SpinPart", "Spin Part", Configuration.SpinPartDropdownValues, Configuration.SpinPart, function(Value)
+        Configuration.SpinPart = Value
+    end)
 
-    local RandomSpinPartToggle = SpinBotSection:AddToggle("RandomSpinPart", { Title = "Random Spin Part", Default = Configuration.RandomSpinPart })
-    RandomSpinPartToggle:OnChanged(function(Value) Configuration.RandomSpinPart = Value end)
-
-    SpinBotSection:AddInput("AddSpinPart", {
-        Title = "Add Spin Part", Finished = true, Placeholder = "Part Name",
-        Callback = function(Value)
-            if #Value > 0 and not table.find(Configuration.SpinPartDropdownValues, Value) then
-                table.insert(Configuration.SpinPartDropdownValues, Value)
-                SpinPartDropdown:SetValue(Value)
-            end
-        end
-    })
-
-    SpinBotSection:AddInput("RemoveSpinPart", {
-        Title = "Remove Spin Part", Finished = true, Placeholder = "Part Name",
-        Callback = function(Value)
-            if #Value > 0 and table.find(Configuration.SpinPartDropdownValues, Value) then
-                if Configuration.SpinPart == Value then SpinPartDropdown:SetValue(nil) end
-                table.remove(Configuration.SpinPartDropdownValues, table.find(Configuration.SpinPartDropdownValues, Value))
-                SpinPartDropdown:SetValues(Configuration.SpinPartDropdownValues)
-            end
-        end
-    })
-
-    SpinBotSection:AddButton({
-        Title = "Clear All Items",
-        Callback = function()
-            local Items = #Configuration.SpinPartDropdownValues
-            SpinPartDropdown:SetValue(nil)
-            Configuration.SpinPartDropdownValues = {}
-            SpinPartDropdown:SetValues(Configuration.SpinPartDropdownValues)
-            Window:Dialog({
-                Title = string.format(MonthlyLabels[os.date("*t").month], "Open Aimbot"),
-                Content = Items == 0 and "Nothing has been cleared!" or Items == 1 and "1 Item has been cleared!" or string.format("%s Items have been cleared!", Items),
-                Buttons = {{ Title = "Confirm" }}
-            })
-        end
-    })
+    makeToggle(BotGroup, "RandomSpinPart", "Random Spin Part", Configuration.RandomSpinPart, function(Value)
+        Configuration.RandomSpinPart = Value
+    end)
 
     if getfenv().mouse1click and IsComputer then
-        local TriggerBotSection = Tabs.Bots:AddSection("TriggerBot")
+        makeToggle(TriggerGroup, "TriggerBot", "TriggerBot", Configuration.TriggerBot, function(Value)
+            Configuration.TriggerBot = Value
+        end)
 
-        local TriggerBotToggle = TriggerBotSection:AddToggle("TriggerBot", { Title = "TriggerBot", Default = Configuration.TriggerBot })
-        TriggerBotToggle:OnChanged(function(Value) Configuration.TriggerBot = Value end)
+        makeToggle(TriggerGroup, "OnePressTriggeringMode", "One-Press Mode", Configuration.OnePressTriggeringMode, function(Value)
+            Configuration.OnePressTriggeringMode = Value
+        end)
 
-        local OnePressTriggeringModeToggle = TriggerBotSection:AddToggle("OnePressTriggeringMode", { Title = "One-Press Mode", Default = Configuration.OnePressTriggeringMode })
-        OnePressTriggeringModeToggle:OnChanged(function(Value) Configuration.OnePressTriggeringMode = Value end)
+        makeToggle(TriggerGroup, "SmartTriggerBot", "Smart TriggerBot", Configuration.SmartTriggerBot, function(Value)
+            Configuration.SmartTriggerBot = Value
+        end)
 
-        local SmartTriggerBotToggle = TriggerBotSection:AddToggle("SmartTriggerBot", { Title = "Smart TriggerBot", Default = Configuration.SmartTriggerBot })
-        SmartTriggerBotToggle:OnChanged(function(Value) Configuration.SmartTriggerBot = Value end)
+        makeKeyPicker(TriggerGroup, "TriggerKey", "Trigger Key", Configuration.TriggerKey, function(Value)
+            Configuration.TriggerKey = Value
+        end)
 
-        local TriggerKeybind = TriggerBotSection:AddKeybind("TriggerKey", {
-            Title = "Trigger Key",
-            Default = Configuration.TriggerKey,
-            ChangedCallback = function(Value) Configuration.TriggerKey = Value end
-        })
-        Configuration.TriggerKey = TriggerKeybind.Value ~= "RMB" and Enum.KeyCode[TriggerKeybind.Value] or Enum.UserInputType.MouseButton2
-
-        TriggerBotSection:AddSlider("TriggerBotChance", {
-            Title = "TriggerBot Chance",
-            Default = Configuration.TriggerBotChance,
-            Min = 1, Max = 100, Rounding = 1,
-            Callback = function(Value) Configuration.TriggerBotChance = Value end
-        })
-    else
-        ShowWarning = true
+        makeSlider(TriggerGroup, "TriggerBotChance", "TriggerBot Chance", Configuration.TriggerBotChance, 1, 100, function(Value)
+            Configuration.TriggerBotChance = Value
+        end, "%", 1)
     end
 
-    Tabs.Checks = Window:AddTab({ Title = "Checks", Icon = "list-checks" })
+    local SimpleChecks = Tabs.Checks:AddLeftGroupbox("Simple Checks")
+    local AdvancedChecks = Tabs.Checks:AddRightGroupbox("Advanced Checks")
+    local ExpertChecks = Tabs.Checks:AddLeftGroupbox("Expert Checks")
 
-    Tabs.Checks:AddParagraph({
-        Title = string.format("%s 🔥FREE🔥", string.format(MonthlyLabels[os.date("*t").month], "Open Aimbot")),
-        Content = "✨Universal Aim Assist Framework✨\nhttps://github.com/ttwizz/Open-Aimbot"
-    })
+    makeToggle(SimpleChecks, "AliveCheck", "Alive Check", Configuration.AliveCheck, function(Value) Configuration.AliveCheck = Value end)
+    makeToggle(SimpleChecks, "GodCheck", "God Check", Configuration.GodCheck, function(Value) Configuration.GodCheck = Value end)
+    makeToggle(SimpleChecks, "TeamCheck", "Team Check", Configuration.TeamCheck, function(Value) Configuration.TeamCheck = Value end)
+    makeToggle(SimpleChecks, "FriendCheck", "Friend Check", Configuration.FriendCheck, function(Value) Configuration.FriendCheck = Value end)
+    makeToggle(SimpleChecks, "FollowCheck", "Follow Check", Configuration.FollowCheck, function(Value) Configuration.FollowCheck = Value end)
+    makeToggle(SimpleChecks, "VerifiedBadgeCheck", "Verified Badge Check", Configuration.VerifiedBadgeCheck, function(Value) Configuration.VerifiedBadgeCheck = Value end)
+    makeToggle(SimpleChecks, "WallCheck", "Wall Check", Configuration.WallCheck, function(Value) Configuration.WallCheck = Value end)
+    makeToggle(SimpleChecks, "WaterCheck", "Water Check", Configuration.WaterCheck, function(Value) Configuration.WaterCheck = Value end)
 
-    local SimpleChecksSection = Tabs.Checks:AddSection("Simple Checks")
+    makeToggle(AdvancedChecks, "FoVCheck", "FoV Check", Configuration.FoVCheck, function(Value) Configuration.FoVCheck = Value end)
+    makeSlider(AdvancedChecks, "FoVRadius", "FoV Radius", Configuration.FoVRadius, 10, 1000, function(Value) Configuration.FoVRadius = Value end, "", 1)
+    makeToggle(AdvancedChecks, "MagnitudeCheck", "Magnitude Check", Configuration.MagnitudeCheck, function(Value) Configuration.MagnitudeCheck = Value end)
+    makeSlider(AdvancedChecks, "TriggerMagnitude", "Trigger Magnitude", Configuration.TriggerMagnitude, 10, 1000, function(Value) Configuration.TriggerMagnitude = Value end, "", 1)
+    makeToggle(AdvancedChecks, "TransparencyCheck", "Transparency Check", Configuration.TransparencyCheck, function(Value) Configuration.TransparencyCheck = Value end)
+    makeSlider(AdvancedChecks, "IgnoredTransparency", "Ignored Transparency", Configuration.IgnoredTransparency, 0.1, 1, function(Value) Configuration.IgnoredTransparency = Value end, "", 1)
+    makeToggle(AdvancedChecks, "WhitelistedGroupCheck", "Whitelisted Group Check", Configuration.WhitelistedGroupCheck, function(Value) Configuration.WhitelistedGroupCheck = Value end)
+    makeInput(AdvancedChecks, "WhitelistedGroup", "Whitelisted Group", tostring(Configuration.WhitelistedGroup), function(Value) Configuration.WhitelistedGroup = #tostring(Value) > 0 and tonumber(Value) or 0 end, true)
+    makeToggle(AdvancedChecks, "BlacklistedGroupCheck", "Blacklisted Group Check", Configuration.BlacklistedGroupCheck, function(Value) Configuration.BlacklistedGroupCheck = Value end)
+    makeInput(AdvancedChecks, "BlacklistedGroup", "Blacklisted Group", tostring(Configuration.BlacklistedGroup), function(Value) Configuration.BlacklistedGroup = #tostring(Value) > 0 and tonumber(Value) or 0 end, true)
 
-    local AliveCheckToggle = SimpleChecksSection:AddToggle("AliveCheck", { Title = "Alive Check", Default = Configuration.AliveCheck })
-    AliveCheckToggle:OnChanged(function(Value) Configuration.AliveCheck = Value end)
-
-    local GodCheckToggle = SimpleChecksSection:AddToggle("GodCheck", { Title = "God Check", Default = Configuration.GodCheck })
-    GodCheckToggle:OnChanged(function(Value) Configuration.GodCheck = Value end)
-
-    local TeamCheckToggle = SimpleChecksSection:AddToggle("TeamCheck", { Title = "Team Check", Default = Configuration.TeamCheck })
-    TeamCheckToggle:OnChanged(function(Value) Configuration.TeamCheck = Value end)
-
-    local FriendCheckToggle = SimpleChecksSection:AddToggle("FriendCheck", { Title = "Friend Check", Default = Configuration.FriendCheck })
-    FriendCheckToggle:OnChanged(function(Value) Configuration.FriendCheck = Value end)
-
-    local FollowCheckToggle = SimpleChecksSection:AddToggle("FollowCheck", { Title = "Follow Check", Default = Configuration.FollowCheck })
-    FollowCheckToggle:OnChanged(function(Value) Configuration.FollowCheck = Value end)
-
-    local VerifiedBadgeCheckToggle = SimpleChecksSection:AddToggle("VerifiedBadgeCheck", { Title = "Verified Badge Check", Default = Configuration.VerifiedBadgeCheck })
-    VerifiedBadgeCheckToggle:OnChanged(function(Value) Configuration.VerifiedBadgeCheck = Value end)
-
-    local WallCheckToggle = SimpleChecksSection:AddToggle("WallCheck", { Title = "Wall Check", Default = Configuration.WallCheck })
-    WallCheckToggle:OnChanged(function(Value) Configuration.WallCheck = Value end)
-
-    local WaterCheckToggle = SimpleChecksSection:AddToggle("WaterCheck", { Title = "Water Check", Default = Configuration.WaterCheck })
-    WaterCheckToggle:OnChanged(function(Value) Configuration.WaterCheck = Value end)
-
-    local AdvancedChecksSection = Tabs.Checks:AddSection("Advanced Checks")
-
-    local FoVCheckToggle = AdvancedChecksSection:AddToggle("FoVCheck", { Title = "FoV Check", Default = Configuration.FoVCheck })
-    FoVCheckToggle:OnChanged(function(Value) Configuration.FoVCheck = Value end)
-
-    AdvancedChecksSection:AddSlider("FoVRadius", {
-        Title = "FoV Radius", Default = Configuration.FoVRadius,
-        Min = 10, Max = 1000, Rounding = 1,
-        Callback = function(Value) Configuration.FoVRadius = Value end
-    })
-
-    local MagnitudeCheckToggle = AdvancedChecksSection:AddToggle("MagnitudeCheck", { Title = "Magnitude Check", Default = Configuration.MagnitudeCheck })
-    MagnitudeCheckToggle:OnChanged(function(Value) Configuration.MagnitudeCheck = Value end)
-
-    AdvancedChecksSection:AddSlider("TriggerMagnitude", {
-        Title = "Trigger Magnitude", Default = Configuration.TriggerMagnitude,
-        Min = 10, Max = 1000, Rounding = 1,
-        Callback = function(Value) Configuration.TriggerMagnitude = Value end
-    })
-
-    local TransparencyCheckToggle = AdvancedChecksSection:AddToggle("TransparencyCheck", { Title = "Transparency Check", Default = Configuration.TransparencyCheck })
-    TransparencyCheckToggle:OnChanged(function(Value) Configuration.TransparencyCheck = Value end)
-
-    AdvancedChecksSection:AddSlider("IgnoredTransparency", {
-        Title = "Ignored Transparency", Default = Configuration.IgnoredTransparency,
-        Min = 0.1, Max = 1, Rounding = 1,
-        Callback = function(Value) Configuration.IgnoredTransparency = Value end
-    })
-
-    local WhitelistedGroupCheckToggle = AdvancedChecksSection:AddToggle("WhitelistedGroupCheck", { Title = "Whitelisted Group Check", Default = Configuration.WhitelistedGroupCheck })
-    WhitelistedGroupCheckToggle:OnChanged(function(Value) Configuration.WhitelistedGroupCheck = Value end)
-
-    AdvancedChecksSection:AddInput("WhitelistedGroup", {
-        Title = "Whitelisted Group", Default = Configuration.WhitelistedGroup,
-        Numeric = true, Finished = true, Placeholder = "Group Id",
-        Callback = function(Value) Configuration.WhitelistedGroup = #tostring(Value) > 0 and tonumber(Value) or 0 end
-    })
-
-    local BlacklistedGroupCheckToggle = AdvancedChecksSection:AddToggle("BlacklistedGroupCheck", { Title = "Blacklisted Group Check", Default = Configuration.BlacklistedGroupCheck })
-    BlacklistedGroupCheckToggle:OnChanged(function(Value) Configuration.BlacklistedGroupCheck = Value end)
-
-    AdvancedChecksSection:AddInput("BlacklistedGroup", {
-        Title = "Blacklisted Group", Default = Configuration.BlacklistedGroup,
-        Numeric = true, Finished = true, Placeholder = "Group Id",
-        Callback = function(Value) Configuration.BlacklistedGroup = #tostring(Value) > 0 and tonumber(Value) or 0 end
-    })
-
-    local ExpertChecksSection = Tabs.Checks:AddSection("Expert Checks")
-
-    local IgnoredPlayersCheckToggle = ExpertChecksSection:AddToggle("IgnoredPlayersCheck", { Title = "Ignored Players Check", Default = Configuration.IgnoredPlayersCheck })
-    IgnoredPlayersCheckToggle:OnChanged(function(Value) Configuration.IgnoredPlayersCheck = Value end)
-
-    local IgnoredPlayersDropdown = ExpertChecksSection:AddDropdown("IgnoredPlayers", {
-        Title = "Ignored Players", Values = Configuration.IgnoredPlayersDropdownValues,
-        Multi = true, Default = Configuration.IgnoredPlayers
-    })
-    IgnoredPlayersDropdown:OnChanged(function(Value)
-        Configuration.IgnoredPlayers = {}
-        for Key, _ in next, Value do
-            if typeof(Key) == "string" then table.insert(Configuration.IgnoredPlayers, Key) end
+    makeToggle(ExpertChecks, "IgnoredPlayersCheck", "Ignored Players Check", Configuration.IgnoredPlayersCheck, function(Value) Configuration.IgnoredPlayersCheck = Value end)
+    makeDropdown(ExpertChecks, "IgnoredPlayers", "Ignored Players", Configuration.IgnoredPlayersDropdownValues, 1, function(Value) Configuration.IgnoredPlayers = typeof(Value) == "table" and Value or { Value } end, true)
+    makeInput(ExpertChecks, "AddIgnoredPlayer", "Add Ignored Player", "", function(Value)
+        Value = #GetPlayerName(Value or "") > 0 and GetPlayerName(Value or "") or tostring(Value or "")
+        if #Value > 0 and not table.find(Configuration.IgnoredPlayersDropdownValues, Value) then
+            table.insert(Configuration.IgnoredPlayersDropdownValues, Value)
         end
-    end)
+    end, false)
 
-    ExpertChecksSection:AddInput("AddIgnoredPlayer", {
-        Title = "Add Ignored Player", Finished = true, Placeholder = "Player Name",
-        Callback = function(Value)
-            Value = #GetPlayerName(Value) > 0 and GetPlayerName(Value) or ""
-            if #Value > 0 and not table.find(Configuration.IgnoredPlayersDropdownValues, Value) then
-                table.insert(Configuration.IgnoredPlayersDropdownValues, Value)
-                if not table.find(Configuration.IgnoredPlayers, Value) then
-                    IgnoredPlayersDropdown.Value[Value] = true
-                    table.insert(Configuration.IgnoredPlayers, Value)
-                end
-                IgnoredPlayersDropdown:BuildDropdownList()
-            end
+    makeToggle(ExpertChecks, "TargetPlayersCheck", "Target Players Check", Configuration.TargetPlayersCheck, function(Value) Configuration.TargetPlayersCheck = Value end)
+    makeDropdown(ExpertChecks, "TargetPlayers", "Target Players", Configuration.TargetPlayersDropdownValues, 1, function(Value) Configuration.TargetPlayers = typeof(Value) == "table" and Value or { Value } end, true)
+    makeInput(ExpertChecks, "AddTargetPlayer", "Add Target Player", "", function(Value)
+        Value = #GetPlayerName(Value or "") > 0 and GetPlayerName(Value or "") or tostring(Value or "")
+        if #Value > 0 and not table.find(Configuration.TargetPlayersDropdownValues, Value) then
+            table.insert(Configuration.TargetPlayersDropdownValues, Value)
         end
-    })
+    end, false)
 
-    ExpertChecksSection:AddInput("RemoveIgnoredPlayer", {
-        Title = "Remove Ignored Player", Finished = true, Placeholder = "Player Name",
-        Callback = function(Value)
-            Value = #GetPlayerName(Value) > 0 and GetPlayerName(Value) or ""
-            if #Value > 0 and table.find(Configuration.IgnoredPlayersDropdownValues, Value) then
-                if table.find(Configuration.IgnoredPlayers, Value) then
-                    IgnoredPlayersDropdown.Value[Value] = nil
-                    table.remove(Configuration.IgnoredPlayers, table.find(Configuration.IgnoredPlayers, Value))
-                    IgnoredPlayersDropdown:Display()
-                end
-                table.remove(Configuration.IgnoredPlayersDropdownValues, table.find(Configuration.IgnoredPlayersDropdownValues, Value))
-                IgnoredPlayersDropdown:SetValues(Configuration.IgnoredPlayersDropdownValues)
-            end
-        end
-    })
-
-    ExpertChecksSection:AddButton({
-        Title = "Deselect All Items",
-        Callback = function()
-            local Items = #Configuration.IgnoredPlayers
-            IgnoredPlayersDropdown:SetValue({})
-            Window:Dialog({
-                Title = string.format(MonthlyLabels[os.date("*t").month], "Open Aimbot"),
-                Content = Items == 0 and "Nothing has been deselected!" or string.format("%s Items have been deselected!", Items),
-                Buttons = {{ Title = "Confirm" }}
-            })
-        end
-    })
-
-    ExpertChecksSection:AddButton({
-        Title = "Clear Unselected Items",
-        Callback = function()
-            local Cache, Items = {}, 0
-            for _, Value in next, Configuration.IgnoredPlayersDropdownValues do
-                if table.find(Configuration.IgnoredPlayers, Value) then
-                    table.insert(Cache, Value)
-                else
-                    Items = Items + 1
-                end
-            end
-            Configuration.IgnoredPlayersDropdownValues = Cache
-            IgnoredPlayersDropdown:SetValues(Configuration.IgnoredPlayersDropdownValues)
-            Window:Dialog({
-                Title = string.format(MonthlyLabels[os.date("*t").month], "Open Aimbot"),
-                Content = Items == 0 and "Nothing has been cleared!" or string.format("%s Items have been cleared!", Items),
-                Buttons = {{ Title = "Confirm" }}
-            })
-        end
-    })
-
-    local TargetPlayersCheckToggle = ExpertChecksSection:AddToggle("TargetPlayersCheck", { Title = "Target Players Check", Default = Configuration.TargetPlayersCheck })
-    TargetPlayersCheckToggle:OnChanged(function(Value) Configuration.TargetPlayersCheck = Value end)
-
-    local TargetPlayersDropdown = ExpertChecksSection:AddDropdown("TargetPlayers", {
-        Title = "Target Players", Values = Configuration.TargetPlayersDropdownValues,
-        Multi = true, Default = Configuration.TargetPlayers
-    })
-    TargetPlayersDropdown:OnChanged(function(Value)
-        Configuration.TargetPlayers = {}
-        for Key, _ in next, Value do
-            if typeof(Key) == "string" then table.insert(Configuration.TargetPlayers, Key) end
-        end
-    end)
-
-    ExpertChecksSection:AddInput("AddTargetPlayer", {
-        Title = "Add Target Player", Finished = true, Placeholder = "Player Name",
-        Callback = function(Value)
-            Value = #GetPlayerName(Value) > 0 and GetPlayerName(Value) or ""
-            if #Value > 0 and not table.find(Configuration.TargetPlayersDropdownValues, Value) then
-                table.insert(Configuration.TargetPlayersDropdownValues, Value)
-                if not table.find(Configuration.TargetPlayers, Value) then
-                    TargetPlayersDropdown.Value[Value] = true
-                    table.insert(Configuration.TargetPlayers, Value)
-                end
-                TargetPlayersDropdown:BuildDropdownList()
-            end
-        end
-    })
-
-    ExpertChecksSection:AddInput("RemoveTargetPlayer", {
-        Title = "Remove Target Player", Finished = true, Placeholder = "Player Name",
-        Callback = function(Value)
-            Value = #GetPlayerName(Value) > 0 and GetPlayerName(Value) or ""
-            if #Value > 0 and table.find(Configuration.TargetPlayersDropdownValues, Value) then
-                if table.find(Configuration.TargetPlayers, Value) then
-                    TargetPlayersDropdown.Value[Value] = nil
-                    table.remove(Configuration.TargetPlayers, table.find(Configuration.TargetPlayers, Value))
-                    TargetPlayersDropdown:Display()
-                end
-                table.remove(Configuration.TargetPlayersDropdownValues, table.find(Configuration.TargetPlayersDropdownValues, Value))
-                TargetPlayersDropdown:SetValues(Configuration.TargetPlayersDropdownValues)
-            end
-        end
-    })
-
-    ExpertChecksSection:AddButton({
-        Title = "Deselect All Items",
-        Callback = function()
-            local Items = #Configuration.TargetPlayers
-            TargetPlayersDropdown:SetValue({})
-            Window:Dialog({
-                Title = string.format(MonthlyLabels[os.date("*t").month], "Open Aimbot"),
-                Content = Items == 0 and "Nothing has been deselected!" or string.format("%s Items have been deselected!", Items),
-                Buttons = {{ Title = "Confirm" }}
-            })
-        end
-    })
-
-    ExpertChecksSection:AddButton({
-        Title = "Clear Unselected Items",
-        Callback = function()
-            local Cache, Items = {}, 0
-            for _, Value in next, Configuration.TargetPlayersDropdownValues do
-                if table.find(Configuration.TargetPlayers, Value) then
-                    table.insert(Cache, Value)
-                else
-                    Items = Items + 1
-                end
-            end
-            Configuration.TargetPlayersDropdownValues = Cache
-            TargetPlayersDropdown:SetValues(Configuration.TargetPlayersDropdownValues)
-            Window:Dialog({
-                Title = string.format(MonthlyLabels[os.date("*t").month], "Open Aimbot"),
-                Content = Items == 0 and "Nothing has been cleared!" or string.format("%s Items have been cleared!", Items),
-                Buttons = {{ Title = "Confirm" }}
-            })
-        end
-    })
-
-    local PremiumChecksSection = Tabs.Checks:AddSection("Premium Checks")
-
-    local PremiumCheckToggle = PremiumChecksSection:AddToggle("PremiumCheck", { Title = "Premium Check", Default = Configuration.PremiumCheck })
-    PremiumCheckToggle:OnChanged(function(Value) Configuration.PremiumCheck = Value end)
-
-    PremiumChecksSection:AddParagraph({
-        Title = string.format("%s 💫PREMIUM💫", string.format(MonthlyLabels[os.date("*t").month], "Open Aimbot")),
-        Content = "✨Upgrade to unlock all Options✨\nContact @ttwiz_z via Discord to buy"
-    })
+    makeToggle(Tabs.Checks:AddRightGroupbox("Premium Checks"), "PremiumCheck", "Premium Check", Configuration.PremiumCheck, function(Value) Configuration.PremiumCheck = Value end)
 
     if DEBUG or getfenv().Drawing and getfenv().Drawing.new then
-        Tabs.Visuals = Window:AddTab({ Title = "Visuals", Icon = "box" })
-
-        Tabs.Visuals:AddParagraph({
-            Title = string.format("%s 🔥FREE🔥", string.format(MonthlyLabels[os.date("*t").month], "Open Aimbot")),
-            Content = "✨Universal Aim Assist Framework✨\nhttps://github.com/ttwizz/Open-Aimbot"
-        })
-
-        local FoVSection = Tabs.Visuals:AddSection("FoV")
-
-        local FoVToggle = FoVSection:AddToggle("FoV", { Title = "FoV", Description = "Graphically Displays the FoV Radius", Default = Configuration.FoV })
-        FoVToggle:OnChanged(function(Value)
+        local VisualsGroup = Tabs.Visuals:AddLeftGroupbox("FoV")
+        makeToggle(VisualsGroup, "FoV", "FoV", Configuration.FoV, function(Value)
             Configuration.FoV = Value
             if not IsComputer then ShowingFoV = Value end
         end)
 
         if IsComputer then
-            local FoVKeybind = FoVSection:AddKeybind("FoVKey", {
-                Title = "FoV Key",
-                Default = Configuration.FoVKey,
-                ChangedCallback = function(Value) Configuration.FoVKey = Value end
-            })
-            Configuration.FoVKey = FoVKeybind.Value ~= "RMB" and Enum.KeyCode[FoVKeybind.Value] or Enum.UserInputType.MouseButton2
+            makeKeyPicker(VisualsGroup, "FoVKey", "FoV Key", Configuration.FoVKey, function(Value)
+                Configuration.FoVKey = Value
+            end)
         end
 
-        FoVSection:AddSlider("FoVThickness", {
-            Title = "FoV Thickness", Default = Configuration.FoVThickness,
-            Min = 1, Max = 10, Rounding = 1,
-            Callback = function(Value) Configuration.FoVThickness = Value end
-        })
+        makeSlider(VisualsGroup, "FoVThickness", "FoV Thickness", Configuration.FoVThickness, 1, 10, function(Value)
+            Configuration.FoVThickness = Value
+        end, "", 1)
 
-        FoVSection:AddSlider("FoVOpacity", {
-            Title = "FoV Opacity", Default = Configuration.FoVOpacity,
-            Min = 0.1, Max = 1, Rounding = 1,
-            Callback = function(Value) Configuration.FoVOpacity = Value end
-        })
+        makeSlider(VisualsGroup, "FoVOpacity", "FoV Opacity", Configuration.FoVOpacity, 0.1, 1, function(Value)
+            Configuration.FoVOpacity = Value
+        end, "", 1)
 
-        local FoVFilledToggle = FoVSection:AddToggle("FoVFilled", { Title = "FoV Filled", Default = Configuration.FoVFilled })
-        FoVFilledToggle:OnChanged(function(Value) Configuration.FoVFilled = Value end)
-
-        FoVSection:AddColorpicker("FoVColour", {
-            Title = "FoV Colour", Default = Configuration.FoVColour,
-            Callback = function(Value) Configuration.FoVColour = Value end
-        })
-    else
-        ShowWarning = true
+        makeToggle(VisualsGroup, "FoVFilled", "FoV Filled", Configuration.FoVFilled, function(Value)
+            Configuration.FoVFilled = Value
+        end)
     end
 
-    Tabs.Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
+    local SettingsGroup = Tabs.Settings:AddLeftGroupbox("UI")
+    local SettingsExtras = Tabs.Settings:AddRightGroupbox("Notifications & Warnings")
 
-    Tabs.Settings:AddParagraph({
-        Title = string.format("%s 🔥FREE🔥", string.format(MonthlyLabels[os.date("*t").month], "Open Aimbot")),
-        Content = "✨Universal Aim Assist Framework✨\nhttps://github.com/ttwizz/Open-Aimbot"
-    })
-
-    local UISection = Tabs.Settings:AddSection("UI")
-
-    UISection:AddDropdown("Theme", {
-        Title = "Theme", Values = Fluent.Themes, Default = Fluent.Theme,
-        Callback = function(Value)
-            Fluent:SetTheme(Value)
-            UISettings.Theme = Value
-            InterfaceManager:ExportSettings()
-        end
-    })
-
-    if Fluent.UseAcrylic then
-        UISection:AddToggle("Acrylic", {
-            Title = "Acrylic",
-            Description = "Blurred Background requires Graphic Quality >= 8",
-            Default = Fluent.Acrylic,
-            Callback = function(Value)
-                if not Value or not UISettings.ShowWarnings then
-                    Fluent:ToggleAcrylic(Value)
-                elseif UISettings.ShowWarnings then
-                    Window:Dialog({
-                        Title = "Warning",
-                        Content = "This Option can be detected! Activate it anyway?",
-                        Buttons = {
-                            { Title = "Confirm", Callback = function() Fluent:ToggleAcrylic(Value) end },
-                            { Title = "Cancel",  Callback = function() Fluent.Options.Acrylic:SetValue(false) end }
-                        }
-                    })
-                end
-            end
-        })
-    end
-
-    UISection:AddToggle("Transparency", {
-        Title = "Transparency", Default = UISettings.Transparency,
-        Callback = function(Value)
-            Fluent:ToggleTransparency(Value)
-            UISettings.Transparency = Value
-            InterfaceManager:ExportSettings()
-        end
-    })
-
-    if IsComputer then
-        UISection:AddKeybind("MinimizeKey", {
-            Title = "Minimize Key", Default = Fluent.MinimizeKey,
-            ChangedCallback = function()
-                UISettings.MinimizeKey = Fluent.Options.MinimizeKey.Value
-                InterfaceManager:ExportSettings()
-            end
-        })
-        Fluent.MinimizeKeybind = Fluent.Options.MinimizeKey
-    end
-
-    local NotificationsWarningsSection = Tabs.Settings:AddSection("Notifications & Warnings")
-
-    local NotificationsToggle = NotificationsWarningsSection:AddToggle("ShowNotifications", { Title = "Show Notifications", Default = UISettings.ShowNotifications })
-    NotificationsToggle:OnChanged(function(Value)
-        Fluent.ShowNotifications = Value
+    makeToggle(SettingsExtras, "ShowNotifications", "Show Notifications", UISettings.ShowNotifications, function(Value)
         UISettings.ShowNotifications = Value
         InterfaceManager:ExportSettings()
     end)
 
-    local WarningsToggle = NotificationsWarningsSection:AddToggle("ShowWarnings", { Title = "Show Warnings", Default = UISettings.ShowWarnings })
-    WarningsToggle:OnChanged(function(Value)
+    makeToggle(SettingsExtras, "ShowWarnings", "Show Warnings", UISettings.ShowWarnings, function(Value)
         UISettings.ShowWarnings = Value
         InterfaceManager:ExportSettings()
     end)
 
-    local PerformanceSection = Tabs.Settings:AddSection("Performance")
-
-    PerformanceSection:AddParagraph({
-        Title = "NOTE",
-        Content = "Heartbeat fires every frame, after the physics simulation. RenderStepped fires every frame, prior to rendering. Stepped fires every frame, prior to the physics simulation."
-    })
-
-    PerformanceSection:AddDropdown("RenderingMode", {
-        Title = "Rendering Mode",
-        Values = { "Heartbeat", "RenderStepped", "Stepped" },
-        Default = UISettings.RenderingMode,
-        Callback = function(Value)
-            UISettings.RenderingMode = Value
-            InterfaceManager:ExportSettings()
-            Window:Dialog({
-                Title = string.format(MonthlyLabels[os.date("*t").month], "Open Aimbot"),
-                Content = "Changes will take effect after the Restart!",
-                Buttons = {{ Title = "Confirm" }}
-            })
-        end
-    })
+    makeDropdown(SettingsGroup, "RenderingMode", "Rendering Mode", { "Heartbeat", "RenderStepped", "Stepped" }, UISettings.RenderingMode, function(Value)
+        UISettings.RenderingMode = Value
+        InterfaceManager:ExportSettings()
+        notifyDialog("Open Aimbot", "Changes will take effect after the Restart!")
+    end)
 
     if getfenv().isfile and getfenv().readfile and getfenv().writefile and getfenv().delfile then
-        local ConfigurationManager = Tabs.Settings:AddSection("Configuration Manager")
-
-        local AutoImportToggle = ConfigurationManager:AddToggle("AutoImport", { Title = "Auto Import", Default = UISettings.AutoImport })
-        AutoImportToggle:OnChanged(function(Value)
+        local ConfigGroup = Tabs.Settings:AddLeftGroupbox("Configuration Manager")
+        makeToggle(ConfigGroup, "AutoImport", "Auto Import", UISettings.AutoImport, function(Value)
             UISettings.AutoImport = Value
             InterfaceManager:ExportSettings()
         end)
 
-        ConfigurationManager:AddParagraph({
-            Title = string.format("Manager for %s", game.Name),
-            Content = string.format("Universe ID is %s", game.GameId)
-        })
-
-        ConfigurationManager:AddButton({
-            Title = "Import Configuration File",
-            Callback = function()
-                xpcall(function()
-                    if getfenv().isfile(string.format("%s.ttwizz", game.GameId)) and getfenv().readfile(string.format("%s.ttwizz", game.GameId)) then
-                        local ImportedConfiguration = HttpService:JSONDecode(getfenv().readfile(string.format("%s.ttwizz", game.GameId)))
-                        for Key, Value in next, ImportedConfiguration do
-                            if Key == "AimKey" or Key == "SpinKey" or Key == "TriggerKey" or Key == "FoVKey" then
-                                Fluent.Options[Key]:SetValue(Value)
-                                Configuration[Key] = Value ~= "RMB" and Enum.KeyCode[Value] or Enum.UserInputType.MouseButton2
-                            elseif Key == "AimPart" or Key == "SpinPart" or typeof(Configuration[Key]) == "table" then
-                                Configuration[Key] = Value
-                            elseif Key == "FoVColour" then
-                                Fluent.Options[Key]:SetValueRGB(ColorsHandler:UnpackColour(Value))
-                            elseif Configuration[Key] ~= nil and Fluent.Options[Key] then
-                                Fluent.Options[Key]:SetValue(Value)
-                            end
+        makeButton(ConfigGroup, "Import Configuration File", function()
+            if getfenv().isfile(string.format("%s.ttwizz", game.GameId)) and getfenv().readfile(string.format("%s.ttwizz", game.GameId)) then
+                local ImportedConfiguration = HttpService:JSONDecode(getfenv().readfile(string.format("%s.ttwizz", game.GameId)))
+                for Key, Value in next, ImportedConfiguration do
+                    if Key == "AimKey" or Key == "SpinKey" or Key == "TriggerKey" or Key == "FoVKey" then
+                        if Fluent.Options and Fluent.Options[Key] then
+                            Fluent.Options[Key]:SetValue(Value)
                         end
-                        Window:Dialog({
-                            Title = "Configuration Manager",
-                            Content = string.format("Configuration File %s.ttwizz has been successfully loaded!", game.GameId),
-                            Buttons = {{ Title = "Confirm" }}
-                        })
-                    else
-                        Window:Dialog({
-                            Title = "Configuration Manager",
-                            Content = string.format("Configuration File %s.ttwizz could not be found!", game.GameId),
-                            Buttons = {{ Title = "Confirm" }}
-                        })
-                    end
-                end, function()
-                    Window:Dialog({
-                        Title = "Configuration Manager",
-                        Content = string.format("An Error occurred when loading the Configuration File %s.ttwizz", game.GameId),
-                        Buttons = {{ Title = "Confirm" }}
-                    })
-                end)
-            end
-        })
-
-        ConfigurationManager:AddButton({
-            Title = "Export Configuration File",
-            Callback = function()
-                xpcall(function()
-                    local ExportedConfiguration = { __LAST_UPDATED__ = os.date() }
-                    for Key, Value in next, Configuration do
-                        if Key == "AimKey" or Key == "SpinKey" or Key == "TriggerKey" or Key == "FoVKey" then
-                            ExportedConfiguration[Key] = Fluent.Options[Key].Value
-                        elseif Key == "FoVColour" then
-                            ExportedConfiguration[Key] = ColorsHandler:PackColour(Value)
-                        else
-                            ExportedConfiguration[Key] = Value
+                        Configuration[Key] = Value ~= "RMB" and Enum.KeyCode[Value] or Enum.UserInputType.MouseButton2
+                    elseif Key == "AimPart" or Key == "SpinPart" or typeof(Configuration[Key]) == "table" then
+                        Configuration[Key] = Value
+                    elseif Key == "FoVColour" then
+                        if Fluent.Options and Fluent.Options[Key] then
+                            Fluent.Options[Key]:SetValue(ColorsHandler:UnpackColour(Value))
                         end
+                    elseif Configuration[Key] ~= nil and Fluent.Options and Fluent.Options[Key] then
+                        Fluent.Options[Key]:SetValue(Value)
                     end
-                    getfenv().writefile(string.format("%s.ttwizz", game.GameId), HttpService:JSONEncode(ExportedConfiguration))
-                    Window:Dialog({
-                        Title = "Configuration Manager",
-                        Content = string.format("Configuration File %s.ttwizz has been successfully overwritten!", game.GameId),
-                        Buttons = {{ Title = "Confirm" }}
-                    })
-                end, function()
-                    Window:Dialog({
-                        Title = "Configuration Manager",
-                        Content = string.format("An Error occurred when overwriting the Configuration File %s.ttwizz", game.GameId),
-                        Buttons = {{ Title = "Confirm" }}
-                    })
-                end)
+                end
+                notifyDialog("Configuration Manager", string.format("Configuration File %s.ttwizz has been successfully loaded!", game.GameId))
+            else
+                notifyDialog("Configuration Manager", string.format("Configuration File %s.ttwizz could not be found!", game.GameId))
             end
-        })
+        end)
 
-        ConfigurationManager:AddButton({
-            Title = "Delete Configuration File",
-            Callback = function()
-                if getfenv().isfile(string.format("%s.ttwizz", game.GameId)) then
-                    getfenv().delfile(string.format("%s.ttwizz", game.GameId))
-                    Window:Dialog({
-                        Title = "Configuration Manager",
-                        Content = string.format("Configuration File %s.ttwizz has been successfully removed!", game.GameId),
-                        Buttons = {{ Title = "Confirm" }}
-                    })
+        makeButton(ConfigGroup, "Export Configuration File", function()
+            local ExportedConfiguration = { __LAST_UPDATED__ = os.date() }
+            for Key, Value in next, Configuration do
+                if Key == "AimKey" or Key == "SpinKey" or Key == "TriggerKey" or Key == "FoVKey" then
+                    ExportedConfiguration[Key] = Fluent.Options and Fluent.Options[Key] and Fluent.Options[Key].Value or Value
+                elseif Key == "FoVColour" then
+                    ExportedConfiguration[Key] = ColorsHandler:PackColour(Value)
                 else
-                    Window:Dialog({
-                        Title = "Configuration Manager",
-                        Content = string.format("Configuration File %s.ttwizz could not be found!", game.GameId),
-                        Buttons = {{ Title = "Confirm" }}
-                    })
+                    ExportedConfiguration[Key] = Value
                 end
             end
-        })
-    else
-        ShowWarning = true
+            getfenv().writefile(string.format("%s.ttwizz", game.GameId), HttpService:JSONEncode(ExportedConfiguration))
+            notifyDialog("Configuration Manager", string.format("Configuration File %s.ttwizz has been successfully overwritten!", game.GameId))
+        end)
+
+        makeButton(ConfigGroup, "Delete Configuration File", function()
+            if getfenv().isfile(string.format("%s.ttwizz", game.GameId)) then
+                getfenv().delfile(string.format("%s.ttwizz", game.GameId))
+                notifyDialog("Configuration Manager", string.format("Configuration File %s.ttwizz has been successfully removed!", game.GameId))
+            else
+                notifyDialog("Configuration Manager", string.format("Configuration File %s.ttwizz could not be found!", game.GameId))
+            end
+        end)
     end
 
-    local DiscordWikiSection = Tabs.Settings:AddSection("Discord & Wiki")
-
+    local WikiGroup = Tabs.Settings:AddRightGroupbox("Discord & Wiki")
     if getfenv().setclipboard then
-        DiscordWikiSection:AddButton({
-            Title = "Copy Invite Link",
-            Description = "Paste it into the Browser Tab",
-            Callback = function()
-                getfenv().setclipboard("https://twix.cyou/pix")
-                Window:Dialog({
-                    Title = string.format(MonthlyLabels[os.date("*t").month], "Open Aimbot"),
-                    Content = "Invite Link has been copied to the Clipboard!",
-                    Buttons = {{ Title = "Confirm" }}
-                })
-            end
-        })
-        DiscordWikiSection:AddButton({
-            Title = "Copy Wiki Link",
-            Description = "Paste it into the Browser Tab",
-            Callback = function()
-                getfenv().setclipboard("https://moderka.org/Open-Aimbot")
-                Window:Dialog({
-                    Title = string.format(MonthlyLabels[os.date("*t").month], "Open Aimbot"),
-                    Content = "Wiki Link has been copied to the Clipboard!",
-                    Buttons = {{ Title = "Confirm" }}
-                })
-            end
-        })
+        makeButton(WikiGroup, "Copy Invite Link", function()
+            getfenv().setclipboard("https://twix.cyou/pix")
+            notifyDialog("Open Aimbot", "Invite Link has been copied to the Clipboard!")
+        end)
+
+        makeButton(WikiGroup, "Copy Wiki Link", function()
+            getfenv().setclipboard("https://moderka.org/Open-Aimbot")
+            notifyDialog("Open Aimbot", "Wiki Link has been copied to the Clipboard!")
+        end)
     else
-        DiscordWikiSection:AddParagraph({ Title = "https://twix.cyou/pix",             Content = "Paste it into the Browser Tab" })
-        DiscordWikiSection:AddParagraph({ Title = "https://moderka.org/Open-Aimbot",   Content = "Paste it into the Browser Tab" })
+        WikiGroup:AddLabel("https://twix.cyou/pix", true)
+        WikiGroup:AddLabel("https://moderka.org/Open-Aimbot", true)
     end
 
     if UISettings.ShowWarnings then
         if DEBUG then
-            Window:Dialog({
-                Title = "Warning",
-                Content = "Running in Debugging Mode. Some Features may not work properly.",
-                Buttons = {{ Title = "Confirm" }}
-            })
+            notifyDialog("Warning", "Running in Debugging Mode. Some Features may not work properly.")
         elseif ShowWarning then
-            Window:Dialog({
-                Title = "Warning",
-                Content = string.format("Your Software does not support all the Features of %s 🔥FREE🔥!", string.format(MonthlyLabels[os.date("*t").month], "Open Aimbot")),
-                Buttons = {{ Title = "Confirm" }}
-            })
+            notifyDialog("Warning", string.format("Your Software does not support all the Features of Open Aimbot!"))
         else
-            Window:Dialog({
-                Title = string.format("%s 💫PREMIUM💫", string.format(MonthlyLabels[os.date("*t").month], "Open Aimbot")),
-                Content = "✨Upgrade to unlock all Options✨ – Contact @ttwiz_z via Discord to buy",
-                Buttons = {{ Title = "Confirm" }}
-            })
+            notifyDialog("Open Aimbot", "✨Upgrade to unlock all Options✨ – Contact @ttwiz_z via Discord to buy")
         end
     end
 end
@@ -1162,8 +705,7 @@ local function Notify(Message)
         Fluent:Notify({
             Title = string.format("%s 🔥FREE🔥", string.format(MonthlyLabels[os.date("*t").month], "Open Aimbot")),
             Content = Message,
-            SubContent = "By @ttwiz_z",
-            Duration = 1.5
+            Duration = 1.5,
         })
     end
 end
@@ -1302,13 +844,14 @@ end
 --! Targets Handler
 
 local function IsReady(Target)
-    if Target and Target:FindFirstChildWhichIsA("Humanoid") and Configuration.AimPart and Target:FindFirstChild(Configuration.AimPart) and Target:FindFirstChild(Configuration.AimPart):IsA("BasePart") and Player.Character and Player.Character:FindFirstChildWhichIsA("Humanoid") and Player.Character:FindFirstChild(Configuration.AimPart) and Player.Character:FindFirstChild(Configuration.AimPart):IsA("BasePart") then
+    if Target and Target:FindFirstChildWhichIsA("Humanoid") and Configuration.AimPart and Target:FindFirstChild(Configuration.AimPart) and Target:FindFirstChild(Configuration.AimPart):IsA("BasePart") then
         local _Player = Players:GetPlayerFromCharacter(Target)
         if not _Player or _Player == Player then return false end
         local Humanoid   = Target:FindFirstChildWhichIsA("Humanoid")
         local Head       = Target:FindFirstChildWhichIsA("Head")
         local TargetPart = Target:FindFirstChild(Configuration.AimPart)
-        local NativePart = Player.Character:FindFirstChild(Configuration.AimPart)
+        local NativePart = Player.Character and Player.Character:FindFirstChild(Configuration.AimPart)
+        if not NativePart then return false end
         if Configuration.AliveCheck and Humanoid.Health == 0 or Configuration.GodCheck and (Humanoid.Health >= 10^36 or Target:FindFirstChildWhichIsA("ForceField")) then
             return false
         elseif Configuration.TeamCheck and _Player.TeamColor == Player.TeamColor or Configuration.FriendCheck and _Player:IsFriendsWith(Player.UserId) then
@@ -1329,14 +872,14 @@ local function IsReady(Target)
             return false
         elseif Configuration.TransparencyCheck and Head and Head:IsA("BasePart") and Head.Transparency >= Configuration.IgnoredTransparency then
             return false
-        elseif Configuration.WhitelistedGroupCheck and _Player:IsInGroup(Configuration.WhitelistedGroup) or Configuration.BlacklistedGroupCheck and not _Player:IsInGroup(Configuration.BlacklistedGroup) or Configuration.PremiumCheck and _Player:IsInGroup(tonumber(Fluent.Address, 8)) then
+        elseif Configuration.WhitelistedGroupCheck and _Player:IsInGroup(Configuration.WhitelistedGroup) or Configuration.BlacklistedGroupCheck and not _Player:IsInGroup(Configuration.BlacklistedGroup) then
             return false
         elseif Configuration.IgnoredPlayersCheck and table.find(Configuration.IgnoredPlayers, _Player.Name) or Configuration.TargetPlayersCheck and not table.find(Configuration.TargetPlayers, _Player.Name) then
             return false
         end
-        local OffsetIncrement = Configuration.UseOffset and (Configuration.AutoOffset and Vector3.new(0, TargetPart.Position.Y * Configuration.StaticOffsetIncrement * (TargetPart.Position - NativePart.Position).Magnitude / 1000 <= Configuration.MaxAutoOffset and TargetPart.Position.Y * Configuration.StaticOffsetIncrement * (TargetPart.Position - NativePart.Position).Magnitude / 1000 or Configuration.MaxAutoOffset, 0) + Humanoid.MoveDirection * Configuration.DynamicOffsetIncrement / 10 or Configuration.OffsetType == "Static" and Vector3.new(0, TargetPart.Position.Y * Configuration.StaticOffsetIncrement / 10, 0) or Configuration.OffsetType == "Dynamic" and Humanoid.MoveDirection * Configuration.DynamicOffsetIncrement / 10 or Vector3.new(0, TargetPart.Position.Y * Configuration.StaticOffsetIncrement / 10, 0) + Humanoid.MoveDirection * Configuration.DynamicOffsetIncrement / 10) or Vector3.zero
+        local OffsetIncrement = Configuration.UseOffset and (Configuration.AutoOffset and Vector3.new(0, TargetPart.Position.Y * Configuration.StaticOffsetIncrement * (TargetPart.Position - NativePart.Position).Magnitude / 100, 0) or Vector3.new(0, Configuration.StaticOffsetIncrement, 0)) or Vector3.zero
         local NoiseFrequency = Configuration.UseNoise and Vector3.new(Random.new():NextNumber(-Configuration.NoiseFrequency / 100, Configuration.NoiseFrequency / 100), Random.new():NextNumber(-Configuration.NoiseFrequency / 100, Configuration.NoiseFrequency / 100), Random.new():NextNumber(-Configuration.NoiseFrequency / 100, Configuration.NoiseFrequency / 100)) or Vector3.zero
-        return true, Target, { workspace.CurrentCamera:WorldToViewportPoint(TargetPart.Position + OffsetIncrement + NoiseFrequency) }, TargetPart.Position + OffsetIncrement + NoiseFrequency, (TargetPart.Position + OffsetIncrement + NoiseFrequency - NativePart.Position).Magnitude, CFrame.new(TargetPart.Position + OffsetIncrement + NoiseFrequency) * CFrame.fromEulerAnglesYXZ(math.rad(TargetPart.Orientation.X), math.rad(TargetPart.Orientation.Y), math.rad(TargetPart.Orientation.Z)), TargetPart
+        return true, Target, { workspace.CurrentCamera:WorldToViewportPoint(TargetPart.Position + OffsetIncrement + NoiseFrequency) }, TargetPart.Position + OffsetIncrement + NoiseFrequency, (TargetPart.Position - NativePart.Position).Magnitude
     end
     return false
 end
@@ -1366,7 +909,7 @@ end
 do
     if not DEBUG and getfenv().hookmetamethod and getfenv().newcclosure and getfenv().checkcaller and getfenv().getnamecallmethod then
         local OldIndex; OldIndex = getfenv().hookmetamethod(game, "__index", getfenv().newcclosure(function(self, Index)
-            if Fluent and not getfenv().checkcaller() and Configuration.AimMode == "Silent" and table.find(Configuration.SilentAimMethods, "Mouse.Hit / Mouse.Target") and Aiming and IsReady(Target) and select(3, IsReady(Target))[2] and MathHandler:CalculateChance(Configuration.SilentAimChance) and self == Mouse then
+            if Fluent and not getfenv().checkcaller() and Configuration.AimMode == "Silent" and table.find(Configuration.SilentAimMethods, "Mouse.Hit / Mouse.Target") and Aiming and IsReady(Target) then
                 if Index == "Hit" or Index == "hit" then
                     return select(6, IsReady(Target))
                 elseif Index == "Target" or Index == "target" then
@@ -1415,7 +958,7 @@ local function HandleBots()
     if Spinning and Configuration.SpinPart and Player.Character and Player.Character:FindFirstChildWhichIsA("Humanoid") and Player.Character:FindFirstChild(Configuration.SpinPart) and Player.Character:FindFirstChild(Configuration.SpinPart):IsA("BasePart") then
         Player.Character:FindFirstChild(Configuration.SpinPart).CFrame = Player.Character:FindFirstChild(Configuration.SpinPart).CFrame * CFrame.fromEulerAnglesXYZ(0, math.rad(Configuration.SpinBotVelocity), 0)
     end
-    if not DEBUG and getfenv().mouse1click and IsComputer and Triggering and (Configuration.SmartTriggerBot and Aiming or not Configuration.SmartTriggerBot) and Mouse.Target and IsReady(Mouse.Target:FindFirstAncestorWhichIsA("Model")) and MathHandler:CalculateChance(Configuration.TriggerBotChance) then
+    if not DEBUG and getfenv().mouse1click and IsComputer and Triggering and (Configuration.SmartTriggerBot and Aiming or not Configuration.SmartTriggerBot) and Mouse.Target and IsReady(Mouse.Target:FindFirstAncestorOfClass("Model")) then
         getfenv().mouse1click()
     end
 end
@@ -1426,10 +969,14 @@ end
 local function HandleRandomParts()
     if Fluent and os.clock() - Clock >= 1 then
         if Configuration.RandomAimPart and #Configuration.AimPartDropdownValues > 0 then
-            Fluent.Options.AimPart:SetValue(Configuration.AimPartDropdownValues[Random.new():NextInteger(1, #Configuration.AimPartDropdownValues)])
+            if Fluent.Options and Fluent.Options.AimPart then
+                Fluent.Options.AimPart:SetValue(Configuration.AimPartDropdownValues[Random.new():NextInteger(1, #Configuration.AimPartDropdownValues)])
+            end
         end
         if Configuration.RandomSpinPart and #Configuration.SpinPartDropdownValues > 0 then
-            Fluent.Options.SpinPart:SetValue(Configuration.SpinPartDropdownValues[Random.new():NextInteger(1, #Configuration.SpinPartDropdownValues)])
+            if Fluent.Options and Fluent.Options.SpinPart then
+                Fluent.Options.SpinPart:SetValue(Configuration.SpinPartDropdownValues[Random.new():NextInteger(1, #Configuration.SpinPartDropdownValues)])
+            end
         end
         Clock = os.clock()
     end
@@ -1518,7 +1065,7 @@ end)
 --! Aimbot Handler
 
 local AimbotLoop; AimbotLoop = RunService[UISettings.RenderingMode]:Connect(function()
-    if Fluent.Unloaded then
+    if Fluent and Fluent.Unloaded then
         Fluent = nil
         FieldsHandler:ResetAimbotFields()
         FieldsHandler:ResetSecondaryFields()
